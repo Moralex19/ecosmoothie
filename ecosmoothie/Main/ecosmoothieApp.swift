@@ -8,10 +8,14 @@
 import SwiftUI
 
 @main
-struct ecosmoothieApp: App {
+struct EcosmoothieApp: App {
+    @StateObject private var session = SessionManager()
+
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+        .environmentObject(session)
         }
     }
 }
