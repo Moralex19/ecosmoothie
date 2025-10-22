@@ -8,7 +8,6 @@
 // ClientTabView.swift
 // ClientTabView.swift
 import SwiftUI
-import Combine
 
 struct ClientTabView: View {
     @EnvironmentObject var session: SessionManager
@@ -21,50 +20,32 @@ struct ClientTabView: View {
     @State private var didSetup = false
 
     var body: some View {
-        NavigationStack {
-            TabView(selection: $selected) {
-                // Carrito
-                ClientCartView()
-                    .environmentObject(socket)
-                    .tabItem { Label("Carrito", systemImage: "cart") }
-                    .badge(cart.count)
-                    .tag(0)
+        TabView(selection: $selected) {
+            // Carrito
+            NavigationStack { ClientCartView() }
+                .tabItem { Label("Carrito", systemImage: "cart") }
+                .badge(cart.count)
+                .tag(0)
 
-                // Pedidos (GRID)
-                ClientOrdersGridView()
-                    .environmentObject(productsStore)
-                    .tabItem { Label("Pedidos", systemImage: "list.bullet.rectangle") }
-                    .tag(1)
+            // Pedidos (GRID)
+            NavigationStack { ClientOrdersGridView() }
+                .tabItem { Label("Pedidos", systemImage: "list.bullet.rectangle") }
+                .tag(1)
 
-                // Perfil
-                ClientProfileView()
-                    .tabItem { Label("Perfil", systemImage: "person.crop.circle") }
-                    .tag(2)
-            }
-            .tint(.matcha)
-            .onAppear {
-                guard !didSetup else { return }
-                socket.connect(jwt: "jwt_real", shopId: "tienda-1", role: .client)
-                productsStore.bind(to: socket)
-
-                let ap = UITabBarAppearance()
-                ap.configureWithOpaqueBackground()
-                ap.backgroundColor = UIColor(Color.almond)
-                UITabBar.appearance().standardAppearance = ap
-                if #available(iOS 15.0, *) { UITabBar.appearance().scrollEdgeAppearance = ap }
-                UITabBar.appearance().isTranslucent = false
-
-                didSetup = true
-            }
-            .navigationTitle(tabTitle)
+            // Perfil
+            NavigationStack { ClientProfileView() }
+                .tabItem { Label("Perfil", systemImage: "person.crop.circle") }
+                .tag(2)
         }
-    }
-
-    private var tabTitle: String {
-        switch selected {
-        case 0: return "Carrito"
-        case 1: return "Tomar pedidos"
-        default: return "Perfil"
+        .tint(.matcha)
+        // 🔑 Inyecta los 2 env objects a TODO el árbol de tabs
+        .environmentObject(socket)
+        .environmentObject(productsStore)
+        .onAppear {
+            guard !didSetup else { return }
+            socket.connect(jwt: "jwt_real", shopId: "tienda-1", role: .client)
+            productsStore.bind(to: socket)
+            didSetup = true
         }
     }
 }
@@ -74,3 +55,4 @@ struct ClientTabView: View {
         .environmentObject(SessionManager())
         .environmentObject(CartStore())
 }
+
