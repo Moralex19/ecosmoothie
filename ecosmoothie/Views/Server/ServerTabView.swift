@@ -9,47 +9,78 @@
 import SwiftUI
 
 struct ServerTabView: View {
-    @StateObject private var socket = SocketService()
+    // Stores/servicios
+    @StateObject private var socket   = SocketService()
     @StateObject private var products = ProductsStore()
-    @StateObject private var orders = OrdersStore()
+    @StateObject private var orders   = OrdersStore()
+    @StateObject private var sales    = SalesStore()
+
+    // Coordinador de tabs (usa el nombre NUEVO)
+    @StateObject private var coord = ServerMainCoordinator()
+    @State private var didSetup = false
 
     var body: some View {
-        TabView {
-            NavigationStack { ServerProductsView() }
-                .tabItem { Label("Productos", systemImage: "shippingbox") }
+        ZStack {
+            Color(.systemBackground)
+            VStack(spacing: 0) {
+                // Header (opcional)
+                HStack {
+                    Text(title(for: coord.current)).font(.largeTitle.bold())
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
 
-            NavigationStack { ServerOrdersListView() }   // tu lista de pedidos
-                .tabItem { Label("Pedidos", systemImage: "tray.full") }
+                // Contenido por tab
+                Group {
+                    switch coord.current {
+                    case .products:
+                        NavigationStack { ServerProductsView() }
+                    case .orders:
+                        NavigationStack { ServerOrdersListView() }
+                    case .profile:
+                        NavigationStack { ServerProfileView() }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            NavigationStack { ServerProfileView() }
-                .tabItem { Label("Perfil", systemImage: "person") }
+                // Barra inferior personalizada
+                ServerCustomTabBar(
+                    current: $coord.current,
+                    pendingBadge: orders.pendingCount,
+                    onTap: { coord.navigate(to: $0) }
+                )
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
         }
         .environmentObject(socket)
         .environmentObject(products)
         .environmentObject(orders)
-        .onAppear {
+        .environmentObject(sales)
+        .task {
+            guard !didSetup else { return }
             socket.connect(jwt: "jwt_server", shopId: "tienda-1", role: .server)
-            products.bind(to: socket) // opcional si el server también escucha catálogo
-            orders.bind(to: socket)   // << importante para recibir pedidos
+            products.bind(to: socket)
+            orders.bind(to: socket)
+            didSetup = true
+        }
+    }
+
+    private func title(for tab: ServerMainTab) -> String {
+        switch tab {
+        case .products: return "Productos"
+        case .orders:   return "Pedidos"
+        case .profile:  return "Perfil"
         }
     }
 }
+
 
 #Preview {
     let session = SessionManager()
     session.isAuthenticated = true
     session.selectedRole = .server
 
-    let socket = SocketService()
-    let products = ProductsStore()
-    let orders = OrdersStore()
-    let sales = SalesStore()
-
     return ServerTabView()
         .environmentObject(session)
-        .environmentObject(socket)
-        .environmentObject(products)
-        .environmentObject(orders)
-        .environmentObject(sales)
 }
-
