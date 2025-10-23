@@ -6,6 +6,7 @@
 //
 
 // SalesStore.swift
+// SalesStore.swift
 import Foundation
 import SQLite3
 import Combine
@@ -18,6 +19,9 @@ public struct SaleRecord: Identifiable, Hashable {
 
 @MainActor
 final class SalesStore: ObservableObject {
+    // Exponer si quieres compartir una instancia
+    static var shared: SalesStore?
+
     // Publicación para UI
     @Published private(set) var recentSales: [SaleRecord] = []
     @Published private(set) var totalToday: Double = 0
@@ -27,14 +31,8 @@ final class SalesStore: ObservableObject {
     private let dbPath: String
     private var db: OpaquePointer?
 
-    // Conveniencia para inyectar en otros stores si quieres
-    static var shared: SalesStore?
-
     // MARK: - Init / Lifecycle
-
-    /// Crea (o abre) la BD en Documents/sales.sqlite3 por defecto.
     init(path: String? = nil) {
-        // Ruta por defecto en Documents
         if let path {
             self.dbPath = path
         } else {
@@ -48,46 +46,37 @@ final class SalesStore: ObservableObject {
             try openDB()
             try createTableIfNeeded()
             try loadRecent(limit: 200)
-            try refreshAggregates()
+            refreshAggregates()     // no lanza (maneja errores internamente)
         } catch {
             print("SalesStore init error:", error.localizedDescription)
         }
     }
 
-    deinit {
-        if let db { sqlite3_close(db) }
-    }
+    deinit { if let db { sqlite3_close(db) } }
 
     // MARK: - Public API
 
-    /// Registra una venta (monto en la moneda actual) con fecha opcional (default: ahora).
     func logSale(amount: Double, date: Date = Date()) {
         do {
             let id = try insert(amount: amount, date: date)
-            // Optimista: actualiza UI sin recargar todo
-            let record = SaleRecord(id: id, amount: amount, date: date)
-            recentSales.insert(record, at: 0)
-
-            try refreshAggregates()
+            recentSales.insert(.init(id: id, amount: amount, date: date), at: 0)
+            refreshAggregates()
         } catch {
             print("logSale error:", error.localizedDescription)
-            // Como fallback, recarga todo
             try? loadRecent(limit: 200)
-            try? refreshAggregates()
+            refreshAggregates()
         }
     }
 
-    /// Recarga la lista de ventas recientes desde SQLite (para listas/tabla).
     func reload() {
         do {
             try loadRecent(limit: 200)
-            try refreshAggregates()
+            refreshAggregates()
         } catch {
             print("reload error:", error.localizedDescription)
         }
     }
 
-    /// Elimina TODAS las ventas (útil para pruebas).
     func resetAll() {
         do {
             try deleteAll()
@@ -106,8 +95,7 @@ final class SalesStore: ObservableObject {
         if sqlite3_open(dbPath, &handle) == SQLITE_OK {
             db = handle
         } else {
-            throw NSError(domain: "SQLite", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "No se pudo abrir la BD en \(dbPath)"])
+            throw Self.makeError("No se pudo abrir la BD en \(dbPath)")
         }
     }
 
@@ -157,12 +145,12 @@ final class SalesStore: ObservableObject {
 
         var rows: [SaleRecord] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let id   = sqlite3_column_int64(stmt, 0)
-            let amt  = sqlite3_column_double(stmt, 1)
-            let ts   = sqlite3_column_double(stmt, 2)
-            rows.append(SaleRecord(id: id, amount: amt, date: Date(timeIntervalSince1970: ts)))
+            let id  = sqlite3_column_int64(stmt, 0)
+            let amt = sqlite3_column_double(stmt, 1)
+            let ts  = sqlite3_column_double(stmt, 2)
+            rows.append(.init(id: id, amount: amt, date: Date(timeIntervalSince1970: ts)))
         }
-        self.recentSales = rows
+        recentSales = rows
     }
 
     private func deleteAll() throws {
@@ -172,14 +160,16 @@ final class SalesStore: ObservableObject {
         }
     }
 
-    /// Recalcula totales del día y de la semana vía `SUM(amount)` en SQLite.
-    public func refreshAggregates() throws {
-        totalToday = try sumBetween(start: Calendar.current.startOfDay(for: Date()),
-                                    end: Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))!)
-
-        let week = Calendar.current.dateInterval(of: .weekOfYear, for: Date())
-                    ?? DateInterval(start: Date(), duration: 0)
-        totalThisWeek = try sumBetween(start: week.start, end: week.end)
+    /// Recalcula totales del día y de la semana (maneja errores, no lanza).
+    func refreshAggregates() {
+        do {
+            totalToday = try dbTotalToday()
+            totalThisWeek = try dbTotalThisWeek()
+        } catch {
+            print("SalesStore.refreshAggregates error:", error)
+            totalToday = 0
+            totalThisWeek = 0
+        }
     }
 
     /// SUM(amount) BETWEEN [start, end)
@@ -201,8 +191,39 @@ final class SalesStore: ObservableObject {
         return sqlite3_column_double(stmt, 0)
     }
 
-    // MARK: - Utils
+    // MARK: - 🔹 LO QUE FALTABA
 
+    /// Total de HOY (de 00:00 a 24:00 locales)
+    private func dbTotalToday() throws -> Double {
+        let (start, end) = dayBounds(for: Date())
+        return try sumBetween(start: start, end: end)
+    }
+
+    /// Total de ESTA SEMANA (inicio de semana según el Calendario del usuario)
+    private func dbTotalThisWeek() throws -> Double {
+        let (start, end) = weekBounds(for: Date())
+        return try sumBetween(start: start, end: end)
+    }
+
+    /// Limites del día [00:00, 24:00) para una fecha dada
+    private func dayBounds(for date: Date) -> (Date, Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: date)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        return (start, end)
+    }
+
+    /// Limites de la semana [inicio, inicio+7d) para una fecha dada
+    private func weekBounds(for date: Date) -> (Date, Date) {
+        let cal = Calendar.current
+        // Inicio de semana según configuración regional
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        let start = cal.date(from: comps) ?? cal.startOfDay(for: date)
+        let end = cal.date(byAdding: .day, value: 7, to: start) ?? start
+        return (start, end)
+    }
+
+    // MARK: - Utils
     private static func makeError(_ msg: String) -> NSError {
         NSError(domain: "SalesStore", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
     }
