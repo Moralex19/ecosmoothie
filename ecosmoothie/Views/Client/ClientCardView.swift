@@ -164,15 +164,21 @@ private struct CartRow: View {
 
 #Preview {
     let cart = CartStore()
-    // ejemplo rápido de item
-    cart.add(CartItem(
-        product: .init(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
+
+    // Ingredientes con tipo explícito
+    let ings: [IngredientCount] = [
+        IngredientCount(kind: .cereza, count: 2),
+        IngredientCount(kind: .gomita, count: 1)
+    ]
+
+    let item = CartItem(
+        product: Product(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
         basePrice: 10,
-        ingredients: [
-            .init(kind: .cereza,   pricePerUnit: 1, count: 2),
-            .init(kind: .gomita,   pricePerUnit: 2, count: 1),
-        ]
-    ))
+        ingredients: ings
+    )
+
+    // Si tu CartStore está @MainActor, hazlo en el main:
+    Task { @MainActor in cart.add(item) }
 
     let socket = SocketService()
 
@@ -182,5 +188,3 @@ private struct CartRow: View {
             .environmentObject(socket)
     }
 }
-
-

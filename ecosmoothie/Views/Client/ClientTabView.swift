@@ -6,7 +6,6 @@
 //
 
 // ClientTabView.swift
-// ClientTabView.swift
 import SwiftUI
 
 struct ClientTabView: View {
@@ -15,37 +14,64 @@ struct ClientTabView: View {
 
     @StateObject private var socket = SocketService()
     @StateObject private var productsStore = ProductsStore()
+    @StateObject private var coord = ClientTabCoordinator()
 
-    @State private var selected = 1
     @State private var didSetup = false
 
     var body: some View {
-        TabView(selection: $selected) {
-            // Carrito
-            NavigationStack { ClientCartView() }
-                .tabItem { Label("Carrito", systemImage: "cart") }
-                .badge(cart.count)
-                .tag(0)
+        ZStack {
+            // Fondo de la app si quieres un color global
+            Color(.systemBackground)
 
-            // Pedidos (GRID)
-            NavigationStack { ClientOrdersGridView() }
-                .tabItem { Label("Pedidos", systemImage: "list.bullet.rectangle") }
-                .tag(1)
+            VStack(spacing: 0) {
 
-            // Perfil
-            NavigationStack { ClientProfileView() }
-                .tabItem { Label("Perfil", systemImage: "person.crop.circle") }
-                .tag(2)
+                // (Opcional) encabezado propio
+                HStack {
+                    Text(title(for: coord.currentTab))
+                        .font(.largeTitle.bold())
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                // Contenido: usamos TabView sin su barra nativa
+                TabView(selection: $coord.currentTab) {
+                    ClientCartView()
+                        .tag(ClientTab.cart)
+
+                    ClientOrdersGridView()
+                        .tag(ClientTab.orders)
+
+                    ClientProfileView()
+                        .tag(ClientTab.profile)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never)) // sin dots
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Barra inferior personalizada — empuja el contenido
+                ClientCustomTabBar(
+                    current: $coord.currentTab,
+                    cartBadge: cart.count,
+                    onTap: { coord.navigate(to: $0) }
+                )
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
         }
-        .tint(.matcha)
-        // 🔑 Inyecta los 2 env objects a TODO el árbol de tabs
         .environmentObject(socket)
         .environmentObject(productsStore)
-        .onAppear {
+        .task {
             guard !didSetup else { return }
             socket.connect(jwt: "jwt_real", shopId: "tienda-1", role: .client)
             productsStore.bind(to: socket)
             didSetup = true
+        }
+    }
+
+    private func title(for tab: ClientTab) -> String {
+        switch tab {
+        case .cart: return "Carrito"
+        case .orders: return "Tomar pedidos"
+        case .profile: return "Perfil"
         }
     }
 }
@@ -55,4 +81,3 @@ struct ClientTabView: View {
         .environmentObject(SessionManager())
         .environmentObject(CartStore())
 }
-

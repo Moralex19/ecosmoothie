@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Muestra el motivo para usar el micrófono -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Necesitamos el micrófono para que puedas hacer preguntas por voz.</string>
+
+    <!-- Muestra el motivo para usar reconocimiento de voz -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Usamos reconocimiento de voz para transcribir tus preguntas y responderte.</string>
+    
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Usamos el micrófono para entender tus preguntas por voz.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Usamos reconocimiento de voz para convertir tu voz a texto.</string>
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Necesito el micrófono para escuchar tus preguntas.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Necesito reconocimiento de voz para transcribir lo que dices.</string>
+
+
+    <!-- Lo que ya tenías -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict/>
+    </array>
+</dict>
+</plist>

@@ -6,38 +6,55 @@
 //
 
 // RootView.swift
+// RootView.swift
 import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var session: SessionManager
+    @EnvironmentObject var cart: CartStore
     @State private var showSplash = true
 
     var body: some View {
-        ZStack {
-            if showSplash {
-                SplashScreen {
-                    // Evita crash: transición en el MainActor
-                    Task { @MainActor in
-                        withAnimation(.easeInOut) { showSplash = false }
-                    }
-                }
-            } else {
-                if session.isAuthenticated {
-                    NavigationStack {
-                        Text("Home (autenticado)")
-                            .font(.largeTitle)
-                            .padding()
+        ZStack(alignment: .top) {
+            // Contenido
+            Group {
+                if showSplash {
+                    SplashScreen {
+                        Task { @MainActor in
+                            withAnimation(.easeInOut) { showSplash = false }
+                        }
                     }
                 } else {
-                    // Asegura stack de navegación al entrar a Auth
-                    NavigationStack { AuthView() }
+                    // RootView.swift (fragmento dentro del else autenticado)
+                    if session.selectedRole == .client {
+                        ClientTabView()
+                            .environmentObject(CartStore())
+                            .environmentObject(ProductsStore())
+                            .environmentObject(SocketService())
+                    } else {
+                        ServerTabView()
+                            .environmentObject(SocketService())
+                            .environmentObject(ProductsStore())
+                            .environmentObject(OrdersStore())
+                            .environmentObject(SalesStore()) // o con path para SQLite
+                    }
                 }
             }
+
+            if session.isAuthenticating {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(.matcha)
+                    .frame(height: 2)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .disabled(session.isAuthenticating) // opcional: evitar taps durante login
     }
 }
 
 #Preview {
-    RootView().environmentObject(SessionManager())
+    RootView()
+        .environmentObject(SessionManager())
+        .environmentObject(CartStore())
 }
-

@@ -5,6 +5,7 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 // AuthView.swift
+// AuthView.swift
 import SwiftUI
 
 struct AuthView: View {
@@ -41,6 +42,18 @@ struct AuthView: View {
             .background(Color(.systemBackground))
         }
         .navigationBarHidden(true)
+        .disabled(isLoading) // ← bloquea interacción durante el login
+        .overlay(alignment: .top) {
+            // ← Barra de carga lineal, visible solo mientras isLoading == true
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(.matcha)
+                    .frame(height: 2)
+                    .padding(.top, 0)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .alert("Inicio de sesión", isPresented: $showAlert, actions: {
             Button("OK", role: .cancel) {}
         }, message: {
@@ -52,7 +65,7 @@ struct AuthView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image("icon")
+            Image("profile2")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 96, height: 96)
@@ -134,6 +147,7 @@ struct AuthView: View {
                 showAlert = true
             }
             .font(.footnote)
+            .disabled(isLoading)
         }
     }
 
@@ -160,8 +174,7 @@ struct AuthView: View {
         defer { isLoading = false }
         do {
             try await session.login(email: email, password: password, role: selectedRole)
-            // Aquí ya estás autenticado. RootView cambiará a la siguiente pantalla.
-            // Si quieres abrir tu WebSocket aquí, este es buen momento.
+            // RootView reaccionará y te llevará a Client/Server según el rol.
         } catch {
             alertMessage = error.localizedDescription
             showAlert = true

@@ -6,6 +6,7 @@
 //
 
 // ProductDetailView.swift
+// ProductDetailView.swift
 import SwiftUI
 
 struct ProductDetailView: View {
@@ -15,43 +16,34 @@ struct ProductDetailView: View {
     let product: Product
     let basePrice: Double
 
-    @State private var ingredients: [IngredientOption] = [
-        .init(kind: .cereza,    pricePerUnit: 1),
-        .init(kind: .frambuesa, pricePerUnit: 3),
-        .init(kind: .picafresa, pricePerUnit: 4),
-        .init(kind: .dulce,     pricePerUnit: 5),
-        .init(kind: .gomita,    pricePerUnit: 2),
+    // Lista editable de ingredientes (tipo + contador)
+    @State private var ingredients: [IngredientCount] = [
+        .init(kind: .cereza,    count: 0),
+        .init(kind: .frambuesa, count: 0),
+        .init(kind: .picafresa, count: 0),
+        .init(kind: .dulce,     count: 0),
+        .init(kind: .gomita,    count: 0)
     ]
 
     @State private var showCartPendingAlert = false
-    @State private var showAddedToast = false
 
-    private func title(for kind: IngredientOption.Kind) -> String {
-        switch kind {
-        case .cereza: return "Cereza"
-        case .frambuesa: return "Frambuesa"
-        case .picafresa: return "Picafresa"
-        case .dulce: return "Dulce"
-        case .gomita: return "Gomita"
-        }
-    }
-
-    var extrasTotal: Double {
+    // Totales
+    private var extrasTotal: Double {
         ingredients.reduce(0) { $0 + $1.subtotal }
     }
-
-    var total: Double { basePrice + extrasTotal }
+    private var total: Double { basePrice + extrasTotal }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
                 header
 
+                // Lista de ingredientes con Stepper por cada uno
                 List {
-                    ForEach($ingredients) { $ing in
+                    ForEach($ingredients, id: \.kind) { $ing in
                         HStack {
-                            VStack(alignment: .leading) {
-                                Text(title(for: ing.kind))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ing.kind.displayName)
                                 Text(String(format: "+ $%.0f c/u", ing.pricePerUnit))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -69,29 +61,10 @@ struct ProductDetailView: View {
                 .scrollContentBackground(.hidden)
                 .background(Color.almond.opacity(0.12))
 
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Base")
-                        Spacer()
-                        Text(String(format: "$%.0f", basePrice))
-                    }
-                    HStack {
-                        Text("Extras")
-                        Spacer()
-                        Text(String(format: "$%.0f", extrasTotal))
-                    }
-                    Divider()
-                    HStack {
-                        Text("Total").fontWeight(.semibold)
-                        Spacer()
-                        Text(String(format: "$%.0f", total)).fontWeight(.semibold)
-                            .foregroundStyle(Color.matcha)
-                    }
-                }
-                .padding()
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.almond.opacity(0.35)))
-                .padding(.horizontal)
+                // Resumen
+                summary
 
+                // Acciones
                 actionButtons
             }
             .navigationTitle(product.name)
@@ -104,10 +77,13 @@ struct ProductDetailView: View {
         }
     }
 
+    // MARK: - Subviews
+
     private var header: some View {
         VStack(spacing: 8) {
             Image(product.imageName)
-                .resizable().scaledToFit()
+                .resizable()
+                .scaledToFit()
                 .frame(height: 160)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             Text("Selecciona ingredientes")
@@ -117,29 +93,50 @@ struct ProductDetailView: View {
         .padding(.top, 8)
     }
 
+    private var summary: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("Base")
+                Spacer()
+                Text(String(format: "$%.0f", basePrice))
+            }
+            HStack {
+                Text("Extras")
+                Spacer()
+                Text(String(format: "$%.0f", extrasTotal))
+            }
+            Divider()
+            HStack {
+                Text("Total").fontWeight(.semibold)
+                Spacer()
+                Text(String(format: "$%.0f", total))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.matcha)
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.almond.opacity(0.35)))
+        .padding(.horizontal)
+    }
+
     private var actionButtons: some View {
-        HStack {
+        HStack(spacing: 12) {
+            // Comprar directo
             Button {
-                // Comprar directo: si carrito tiene cosas, alerta de “carrito pendiente”
                 if cart.count > 0 {
                     showCartPendingAlert = true
                     return
                 }
-                let item = CartItem(product: product, basePrice: basePrice, ingredients: ingredients)
-                cart.add(item)
-                // Aquí podrías navegar a “Checkout”; por ahora regresamos
-                dismiss()
+                addToCartAndDismiss()
             } label: {
                 Text("Comprar")
                     .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.bordered)
 
+            // Agregar al carrito
             Button {
-                let item = CartItem(product: product, basePrice: basePrice, ingredients: ingredients)
-                cart.add(item)
-                // Regresar al menú
-                dismiss()
+                addToCartAndDismiss()
             } label: {
                 Text("Agregar al carrito")
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -150,11 +147,22 @@ struct ProductDetailView: View {
         .padding(.horizontal)
         .padding(.bottom, 12)
     }
+
+    // MARK: - Helpers
+
+    private func addToCartAndDismiss() {
+        let selected = ingredients.filter { $0.count > 0 }
+        let item = CartItem(product: product, basePrice: basePrice, ingredients: selected)
+        Task { @MainActor in
+            cart.add(item)
+            dismiss()
+        }
+    }
+
 }
 
 #Preview {
-    ProductDetailView(product: .init(id: "p-fresa", name: "Fresa", imageName: "fresa"),
+    ProductDetailView(product: .init(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
                       basePrice: 10)
-    .environmentObject(CartStore())
+        .environmentObject(CartStore())
 }
-

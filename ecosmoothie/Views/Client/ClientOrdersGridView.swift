@@ -6,14 +6,16 @@
 //
 
 // ClientOrdersGridView.swift
+// ClientOrdersGridView.swift
 import SwiftUI
 
 struct ClientOrdersGridView: View {
     @EnvironmentObject var cart: CartStore
-    @EnvironmentObject var productsStore: ProductsStore   // ← usa tu ProductsStore
+    @EnvironmentObject var productsStore: ProductsStore
 
     @State private var selectedBasePrice: [String: Double] = [:] // product.id -> price
     @State private var selectedProduct: Product?
+    @State private var showAssistant = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -38,7 +40,7 @@ struct ClientOrdersGridView: View {
                             ForEach(productsStore.products) { p in
                                 ProductCard(
                                     product: p,
-                                    selectedPrice: selectedBasePrice[p.id] ?? 5,
+                                    selectedPrice: selectedBasePrice[p.id] ?? priceTiers.first!,
                                     onTap: { selectedProduct = p },
                                     onPriceChange: { selectedBasePrice[p.id] = $0 }
                                 )
@@ -48,12 +50,25 @@ struct ClientOrdersGridView: View {
                     }
                 }
             }
-            .navigationTitle("Tomar pedidos")
-        }
-        .sheet(item: $selectedProduct) { product in
-            let base = selectedBasePrice[product.id] ?? 5
-            ProductDetailView(product: product, basePrice: base)
-                .environmentObject(cart)
+            //.navigationTitle("Tomar pedidos")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showAssistant = true } label: {
+                        Image(systemName: "mic.fill")
+                    }
+                    .accessibilityLabel("Asistente por voz")
+                }
+            }
+            // Sheet de detalle de producto
+            .sheet(item: $selectedProduct) { product in
+                let base = selectedBasePrice[product.id] ?? priceTiers.first!
+                ProductDetailView(product: product, basePrice: base)
+                    .environmentObject(cart)
+            }
+            // Sheet del asistente por voz (escucha + TTS)
+            .sheet(isPresented: $showAssistant) {
+                VoiceAssistantView()
+            }
         }
     }
 
@@ -66,7 +81,7 @@ struct ClientOrdersGridView: View {
         onPriceChange: @escaping (Double) -> Void
     ) -> some View {
         VStack(spacing: 8) {
-            Image(product.imageName) // asegúrate de tener cafe2, durazno2, fresa2, kiwi2, mango2
+            Image(product.imageName) // cafe2, durazno2, fresa2, kiwi2, mango2
                 .resizable()
                 .scaledToFill()
                 .frame(height: 120)
@@ -106,7 +121,7 @@ struct ClientOrdersGridView: View {
 #Preview {
     let cart = CartStore()
     let store = ProductsStore()
-    // catálogo de prueba opcional
+    // Catálogo de prueba
     store._setPreviewProducts([
         Product(id: "p-cafe",    name: "Café2",    imageName: "cafe2"),
         Product(id: "p-durazno", name: "Durazno2", imageName: "durazno2"),
@@ -117,8 +132,7 @@ struct ClientOrdersGridView: View {
 
     return NavigationStack {
         ClientOrdersGridView()
-            .environmentObject(cart)   // ✅ lo usa el sheet
-            .environmentObject(store)  // ✅ catálogo
+            .environmentObject(cart)
+            .environmentObject(store)
     }
 }
-
