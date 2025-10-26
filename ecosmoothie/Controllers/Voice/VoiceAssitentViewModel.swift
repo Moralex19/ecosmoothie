@@ -141,21 +141,7 @@ final class VoiceAssistantViewModel: NSObject, ObservableObject {
         synthesizer.speak(u)
     }
 
-    private func makeAnswer(from query: String) -> String {
-        let q = query.lowercased()
-        if q.contains("fresa") {
-            return "La fresa aporta vitamina C y antioxidantes; apoya defensas y piel."
-        } else if q.contains("mango") {
-            return "El mango es rico en vitaminas A y C y fibra, bueno para visión y digestión."
-        } else if q.contains("kiwi") {
-            return "El kiwi tiene mucha vitamina C y fibra; ayuda al sistema inmune."
-        } else if q.contains("durazno") {
-            return "El durazno hidrata y aporta vitaminas A y C, ideal para piel."
-        } else if q.contains("café") {
-            return "Con café obtienes energía y enfoque por la cafeína, útil como pre-entreno."
-        }
-        return "Puedo darte beneficios de smoothies y extras. Pregunta por una fruta específica."
-    }
+
 }
 
 // MARK: - RMS (Accelerate)

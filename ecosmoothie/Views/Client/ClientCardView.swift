@@ -61,7 +61,7 @@ struct ClientCartView: View {
                 .background(Color.almond.opacity(0.15))
             }
         }
-        .navigationTitle("Carrito")
+        //.navigationTitle("Carrito")
         .toolbar {
             // Botón Editar + Vaciar
             ToolbarItemGroup(placement: .topBarTrailing) {

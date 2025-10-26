@@ -43,7 +43,7 @@ struct ClientProfileView: View {
                 }
             }
             .scrollContentBackground(.automatic)
-            .navigationTitle("Perfil")
+            //.navigationTitle("Perfil")
             .onAppear {
                 // Demo: valor ficticio
                 cartsSoldToday = Int.random(in: 3...12)
