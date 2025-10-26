@@ -33,6 +33,7 @@ final class OrdersStore: ObservableObject {
 
     // Vinculación con sockets (si usas sockets en el servidor)
     func bind(to socket: SocketService) {
+          bag.removeAll()
         // PEDIDOS ENTRANTES DESDE CLIENTES
         socket.orderIncomingSubject
             .receive(on: DispatchQueue.main)

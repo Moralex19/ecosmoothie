@@ -5,7 +5,6 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 
-// SocketService.swift
 import Foundation
 import Combine
 
@@ -16,7 +15,7 @@ enum SocketEvent: String {
     case catalogUpdated   = "catalog.updated"
     case orderCreatedAck  = "order.created_ack"
     case orderStatus      = "order.status_changed"
-    case orderCreate      = "order.create"          // NEW: lo que envía el cliente
+    case orderCreate      = "order.create" // lo que envía el cliente
 }
 
 final class SocketService: ObservableObject {
@@ -25,41 +24,72 @@ final class SocketService: ObservableObject {
 
     let catalogSubject = PassthroughSubject<[Product], Never>()
     let orderStatusSubject = PassthroughSubject<(orderId: String, status: String), Never>()
-    let orderIncomingSubject = PassthroughSubject<ServerOrder, Never>()   // NEW
+    let orderIncomingSubject = PassthroughSubject<ServerOrder, Never>()
 
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .default)
     private let url: URL
 
     private var jwt: String = ""
-    var shopId: String = ""                   // hazlo internal para sendCatalog
+    var shopId: String = ""                 // internal para sendCatalog
     private var role: SocketRole = .client
+
+    // 🔒 Control de estado para evitar conexiones duplicadas + reconexión controlada
+    private var isConnecting = false
+    private var shouldReconnect = false
+    private var retry = 0
+    private var pingTimer: Timer?
 
     static let WS_URL = URL(string: "wss://tu-dominio.com/socket")!
 
     init(url: URL = WS_URL) { self.url = url }
 
+    deinit {
+        stopPing()
+        task?.cancel(with: .goingAway, reason: nil)
+    }
+
+    // MARK: - Conexión
+
+    /// Conecta si no hay una conexión vigente o en progreso.
     @MainActor
     func connect(jwt: String, shopId: String, role: SocketRole) {
+        // Evita conexiones duplicadas que causan "lag"
+        if isConnected || isConnecting { return }
+
         self.jwt = jwt
         self.shopId = shopId
         self.role = role
+        self.shouldReconnect = true
+        self.isConnecting = true
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
-        task = session.webSocketTask(with: request)
-        task?.resume()
+
+        let newTask = session.webSocketTask(with: request)
+        self.task = newTask
+        newTask.resume()
 
         listen()
         sendAuth()
+        startPing()
     }
 
+    /// Desconecta y detiene reconexión/keep-alive.
     @MainActor
     func disconnect() {
+        shouldReconnect = false             // ← no volver a reconectar
         isConnected = false
+        isConnecting = false
+        stopPing()
+
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+
+        retry = 0                           // ← corta reconexiones en segundo plano
     }
+
+    // MARK: - Mensajería
 
     private func sendAuth() {
         send(dict: ["type":"auth", "jwt": jwt, "shopId": shopId, "role": role.rawValue])
@@ -70,25 +100,36 @@ final class SocketService: ObservableObject {
     }
 
     func send(dict: [String: Any]) {
+        guard let task else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let text = String(data: data, encoding: .utf8) else { return }
-        task?.send(.string(text)) { [weak self] error in
-            if let error { self?.lastEvent = "send error: \(error.localizedDescription)" }
+
+        task.send(.string(text)) { [weak self] error in
+            if let error {
+                DispatchQueue.main.async {
+                    self?.lastEvent = "send error: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
+    // MARK: - Loop de recepción
+
     private func listen() {
-        task?.receive { [weak self] result in
+        guard let task else { return }
+        task.receive { [weak self] result in
             guard let self else { return }
             switch result {
             case .failure(let error):
-                Task { @MainActor in
+                DispatchQueue.main.async {
                     self.isConnected = false
+                    self.isConnecting = false
                     self.lastEvent = "receive error: \(error.localizedDescription)"
                     self.reconnect()
                 }
             case .success(let message):
-                Task { @MainActor in self.handle(message) }
+                // Maneja y sigue escuchando
+                self.handle(message)
                 self.listen()
             }
         }
@@ -97,15 +138,19 @@ final class SocketService: ObservableObject {
     private func handle(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .string(let text):
-            lastEvent = text
+            DispatchQueue.main.async { self.lastEvent = text }
+
             guard let data = text.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = json["type"] as? String
-            else { return }
+                  let type = json["type"] as? String else { return }
 
             switch type {
             case SocketEvent.authOK.rawValue:
-                isConnected = true
+                DispatchQueue.main.async {
+                    self.isConnected = true
+                    self.isConnecting = false
+                    self.retry = 0
+                }
 
             case SocketEvent.catalogUpdated.rawValue:
                 if let data = json["data"] as? [String: Any],
@@ -116,50 +161,102 @@ final class SocketService: ObservableObject {
                               let imageName = dict["imageName"] as? String else { return nil }
                         return Product(id: id, name: name, imageName: imageName)
                     }
-                    catalogSubject.send(mapped)
+                    DispatchQueue.main.async {
+                        self.catalogSubject.send(mapped)
+                    }
                 }
 
             case SocketEvent.orderStatus.rawValue:
                 if let data = json["data"] as? [String: Any],
                    let oid = data["orderId"] as? String,
                    let st  = data["status"] as? String {
-                    orderStatusSubject.send((oid, st))
+                    DispatchQueue.main.async {
+                        self.orderStatusSubject.send((oid, st))
+                    }
                 }
 
-            case SocketEvent.orderCreate.rawValue:                 // NEW: llega pedido del cliente
+            case SocketEvent.orderCreate.rawValue:
                 guard let data = json["data"] as? [String: Any],
                       let itemsArr = data["items"] as? [[String: Any]],
                       let itemsData = try? JSONSerialization.data(withJSONObject: itemsArr)
                 else { return }
+
                 let decoder = JSONDecoder()
                 if let items = try? decoder.decode([CartItem].self, from: itemsData) {
                     let order = ServerOrder(id: UUID().uuidString,
                                             items: items,
                                             createdAt: Date(),
                                             status: .pending)
-                    orderIncomingSubject.send(order)
-
-                    // Opcional: manda ACK al cliente
+                    DispatchQueue.main.async {
+                        self.orderIncomingSubject.send(order)
+                    }
+                    // ACK opcional al cliente
                     send(dict: ["type": SocketEvent.orderCreatedAck.rawValue,
                                 "data": ["orderId": order.id]])
                 }
 
-            default: break
+            default:
+                break
             }
 
         default:
-            lastEvent = "binary message"
+            DispatchQueue.main.async {
+                self.lastEvent = "binary message"
+            }
         }
     }
 
-    private var retry = 0
+    // MARK: - Reconexión exponencial (respetando flags)
+
     private func reconnect() {
+        guard shouldReconnect else { return }        // ← no reconectar si se llamó disconnect()
         retry = min(retry + 1, 6)
-        let delay = pow(2.0, Double(retry))
+        let delay = pow(2.0, Double(retry))         // 2,4,8,16,32,64 (seg máx ~64)
+
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            self.connect(jwt: self.jwt, shopId: self.shopId, role: self.role)
+            guard let self, self.shouldReconnect else { return }
+            // Evita múltiples reconexiones si ya se reconectó por otro lado
+            if self.isConnected || self.isConnecting { return }
+
+            self.isConnecting = true
+            var request = URLRequest(url: self.url)
+            request.timeoutInterval = 30
+
+            let newTask = self.session.webSocketTask(with: request)
+            self.task = newTask
+            newTask.resume()
+
+            self.listen()
+            self.sendAuth()
+            self.startPing()
         }
+    }
+
+    // MARK: - Keep-alive (ping)
+
+    private func startPing() {
+        stopPing()
+        // Ping cada 20s para mantener viva la conexión detrás de NAT/firewalls
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            guard let self, let task = self.task else { return }
+            task.sendPing { error in
+                if let error {
+                    DispatchQueue.main.async {
+                        self.lastEvent = "ping error: \(error.localizedDescription)"
+                        self.isConnected = false
+                        self.isConnecting = false
+                        self.reconnect()
+                    }
+                }
+            }
+        }
+        // Evitar que el timer bloquee la UI
+        RunLoop.main.add(pingTimer!, forMode: .common)
+    }
+
+    private func stopPing() {
+        pingTimer?.invalidate()
+        pingTimer = nil
     }
 }
 

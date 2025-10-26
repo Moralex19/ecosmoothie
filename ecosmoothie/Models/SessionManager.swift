@@ -2,8 +2,6 @@
 //  SessionManager.swift
 //  ecosmoothie
 //
-//  Created by Freddy Morales on 21/10/25.
-//
 
 import Foundation
 import SwiftUI
@@ -19,7 +17,8 @@ final class SessionManager: ObservableObject {
     @Published var isAuthenticated = false
     @Published var userEmail: String? = nil
     @Published var selectedRole: AppRole = .client
-    @Published var isAuthenticating = false   // ← NUEVO
+    @Published var isAuthenticating = false
+    @Published var viewResetID = UUID()     // ← resetea pilas de navegación
 
     func login(email: String, password: String, role: AppRole) async throws {
         isAuthenticating = true
@@ -33,11 +32,13 @@ final class SessionManager: ObservableObject {
         userEmail = email
         selectedRole = role
         isAuthenticated = true
+        viewResetID = UUID()                // ← reset al iniciar sesión
     }
 
     func logout() {
         userEmail = nil
         isAuthenticated = false
         selectedRole = .client
+        viewResetID = UUID()                // ← reset al cerrar sesión
     }
 }

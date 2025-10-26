@@ -2,10 +2,7 @@
 //  RootView.swift
 //  ecosmoothie
 //
-//  Created by Freddy Morales on 21/10/25.
-//
 
-// RootView.swift
 import SwiftUI
 
 struct RootView: View {
@@ -13,7 +10,6 @@ struct RootView: View {
     @EnvironmentObject var cart: CartStore
     @EnvironmentObject var products: ProductsStore
     @EnvironmentObject var socket: SocketService
-    // Estos dos solo los usará el modo Servidor si los inyectas desde el App
     @EnvironmentObject var orders: OrdersStore
     @EnvironmentObject var sales: SalesStore
 
@@ -24,23 +20,23 @@ struct RootView: View {
             Group {
                 if showSplash {
                     SplashScreen {
-                        Task { @MainActor in
-                            withAnimation(.easeInOut) { showSplash = false }
-                        }
+                        withAnimation(.easeInOut) { showSplash = false }
                     }
                 } else {
-                    // 1) Primero, gate por autenticación
                     if !session.isAuthenticated {
-                        NavigationStack { AuthView() }
+                        // LOGIN: el .id va en el contenedor para resetear la pila
+                        NavigationStack {
+                            AuthView()
+                        }
+                        .id(session.viewResetID)         // ← clave para logout limpio
                     } else {
-                        // 2) Ya autenticado: decide por rol
                         switch session.selectedRole {
                         case .client:
                             ClientTabView()
-                                // Usa los EnvironmentObject ya inyectados por la app
                                 .environmentObject(cart)
                                 .environmentObject(products)
                                 .environmentObject(socket)
+                                .id(session.viewResetID) // ← recrea jerarquía al login/logout
 
                         case .server:
                             ServerTabView()
@@ -48,25 +44,24 @@ struct RootView: View {
                                 .environmentObject(products)
                                 .environmentObject(orders)
                                 .environmentObject(sales)
+                                .id(session.viewResetID) // ← idem por si usas servidor
                         }
                     }
                 }
             }
 
-            // Barra de progreso fina mientras se hace login / refresh de sesión
             if session.isAuthenticating {
                 ProgressView()
                     .progressViewStyle(.linear)
                     .tint(.matcha)
                     .frame(height: 2)
-                    .padding(.top, 0)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        // Evita toques mientras se autentica (opcional)
         .disabled(session.isAuthenticating)
     }
 }
+
 
 // MARK: - Previews
 #Preview("Sin autenticar") {

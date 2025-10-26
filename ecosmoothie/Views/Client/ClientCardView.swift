@@ -5,8 +5,6 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 
-// ClientCartView.swift
-// ClientCartView.swift
 import SwiftUI
 import Combine
 
@@ -79,7 +77,7 @@ struct ClientCartView: View {
                     Button {
                         if cart.items.isEmpty { showEmptyAlert = true; return }
                         holder.bridge?.checkout(cartItems: cart.items)
-                        // cart.clear()  // opcional: limpiar al enviar o espera ACK del server
+                        // cart.clear()  // si deseas limpiar tras enviar, descomenta
                     } label: {
                         HStack {
                             Image(systemName: "creditcard")
@@ -96,7 +94,10 @@ struct ClientCartView: View {
             if holder.bridge == nil {
                 holder.bridge = ClientCartCheckoutBridge(socket: socket)
             }
-            // Escucha cambios de estado desde el servidor
+            // 🔴 IMPORTANTE: limpiar sinks antes de volver a suscribirse
+            holder.bag.removeAll()
+
+            // Escucha cambios de estado desde el servidor (una sola suscripción)
             socket.orderStatusSubject
                 .receive(on: DispatchQueue.main)
                 .sink { [weak holder] update in
@@ -106,6 +107,10 @@ struct ClientCartView: View {
         }
         .onChange(of: holder.status) { _, new in
             orderStatus = new
+        }
+        // 🔴 IMPORTANTE: limpiar al salir para que no se acumulen suscripciones
+        .onDisappear {
+            holder.bag.removeAll()
         }
         .alert("Carrito vacío", isPresented: $showEmptyAlert) {
             Button("OK", role: .cancel) {}

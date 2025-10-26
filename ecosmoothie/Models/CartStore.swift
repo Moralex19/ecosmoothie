@@ -15,6 +15,27 @@ import SwiftUI
 @MainActor
 final class CartStore: ObservableObject {
     @Published private(set) var items: [CartItem] = []
+    
+    // 👇👇👇 AÑADIR DESDE AQUÍ
+    struct Purchase: Identifiable, Hashable, Codable {
+        let id: UUID = UUID()
+        let date: Date
+        let items: [CartItem]
+        let total: Double
+        var status: String = "pending"   // puedes actualizar con sockets si quieres
+    }
+
+    @Published private(set) var history: [Purchase] = []
+
+    func logCurrentCartAsPurchase() {
+        guard !items.isEmpty else { return }
+        let p = Purchase(date: Date(), items: items, total: total)
+        history.insert(p, at: 0)
+    }
+
+    func clearHistory() { history.removeAll() }
+    // 👆👆👆 HASTA AQUÍ
+
 
     var count: Int  { items.count }
     var total: Double { items.reduce(0) { $0 + $1.total } }
