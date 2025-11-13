@@ -20,6 +20,9 @@ struct SplashScreen: View {
             
             
             ZStack {
+                Color.almond
+                    .ignoresSafeArea()
+                /*
                 LinearGradient(colors: [Color(.systemGray6), Color(.systemGray5)], startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea()
                 
@@ -31,17 +34,17 @@ struct SplashScreen: View {
                     .foregroundStyle(.primary)
                     .shadow(radius: 2, y: 1)
                     .position(x: W/2, y: H * 0.58)
-                
+                */
                 
                 // Icono con halo que cae y rebota
                 ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.2))
-                        .frame(width: min(W, H) * 0.55, height: min(W, H) * 0.55)
-                    Image("icon")
+                    //Circle()
+                       // .fill(Color.green.opacity(0.2))
+                        //.frame(width: min(W, H) * 0.55, height: min(W, H) * 0.55)
+                    Image("logo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: min(W, H) * 0.28, height: min(W, H) * 0.28)
+                        .frame(width: min(W, H) * 0.58, height: min(W, H) * 0.58)
                 }
                 .position(x: W/2, y: (H * 0.42) + iconOffsetY)
             }
