@@ -75,6 +75,14 @@ final class ProductsStore: ObservableObject {
     }
 }
 
+extension ProductsStore {
+    func updateLocal(_ product: Product) {
+        if let idx = products.firstIndex(where: { $0.id == product.id }) {
+            products[idx] = product
+        }
+    }
+}
+
 // MARK: - Solo Previews
 #if DEBUG
 extension ProductsStore {

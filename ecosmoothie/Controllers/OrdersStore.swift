@@ -87,3 +87,9 @@ final class OrdersStore: ObservableObject {
         // socket.sendOrderStatus(orderId: order.id, status: "paid")
     }
 }
+
+#if DEBUG
+extension OrdersStore {
+    func _setPreviewOrders(_ o: [ServerOrder]) { self.orders = o }
+}
+#endif

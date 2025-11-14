@@ -25,7 +25,7 @@ final class SessionManager: ObservableObject {
         defer { isAuthenticating = false }
 
         try await Task.sleep(nanoseconds: 200_000_000)
-        guard email.lowercased() == "unach@gmail.com", password == "12345" else {
+        guard email.lowercased() == "ecosmoothie@gmail.com", password == "12345" else {
             throw NSError(domain: "Auth", code: 401,
                           userInfo: [NSLocalizedDescriptionKey: "Credenciales inválidas"])
         }

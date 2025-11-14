@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import SQLite3
 
 struct ClientCartView: View {
     @EnvironmentObject var cart: CartStore
@@ -15,6 +16,18 @@ struct ClientCartView: View {
     @StateObject private var holder = Holder()
     @State private var showEmptyAlert = false
     @State private var orderStatus: String?
+
+    // 🔹 Estados para flujo de pago
+    @State private var showPaymentOptions = false
+    @State private var showPaymentConfirm = false
+    @State private var showThankYou = false        // 🔹 Gracias solo después de confirmar
+
+    private enum PaymentMethod {
+        case transfer
+        case cash
+    }
+
+    @State private var selectedPaymentMethod: PaymentMethod?
 
     var body: some View {
         Group {
@@ -75,9 +88,13 @@ struct ClientCartView: View {
             ToolbarItem(placement: .bottomBar) {
                 if !cart.items.isEmpty {
                     Button {
-                        if cart.items.isEmpty { showEmptyAlert = true; return }
-                        holder.bridge?.checkout(cartItems: cart.items)
-                        // cart.clear()  // si deseas limpiar tras enviar, descomenta
+                        if cart.items.isEmpty {
+                            showEmptyAlert = true
+                            return
+                        }
+
+                        // Mostrar opciones de método de pago
+                        showPaymentOptions = true
                     } label: {
                         HStack {
                             Image(systemName: "creditcard")
@@ -112,10 +129,57 @@ struct ClientCartView: View {
         .onDisappear {
             holder.bag.removeAll()
         }
+
+        // ALERTA: Carrito vacío
         .alert("Carrito vacío", isPresented: $showEmptyAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Agrega productos antes de pagar.")
+        }
+
+        // DIALOGO: Seleccionar método de pago
+        .confirmationDialog(
+            "Selecciona el método de pago",
+            isPresented: $showPaymentOptions
+        ) {
+            Button("Transferencia bancaria") {
+                selectedPaymentMethod = .transfer
+                showPaymentConfirm = true
+            }
+            Button("Efectivo") {
+                selectedPaymentMethod = .cash
+                showPaymentConfirm = true
+            }
+            Button("Cancelar", role: .cancel) {
+                // Usuario decidió no pagar al final
+            }
+        } message: {
+            Text("Elige cómo deseas realizar tu pago.")
+        }
+
+        // ALERTA: Confirmación de pago (con opción de cancelar)
+        .alert(
+            paymentTitle,
+            isPresented: $showPaymentConfirm
+        ) {
+            Button("Cancelar", role: .cancel) {
+                // No se paga ni se envía nada
+            }
+            Button("Confirmar pago") {
+                // Ejecutar el flujo real de pago / envío
+                processPayment()
+                // 🔹 Mostrar mensaje de gracias SOLO después de confirmar
+                showThankYou = true
+            }
+        } message: {
+            Text(paymentMessage)
+        }
+
+        // ALERTA: Gracias por la compra (después de confirmar)
+        .alert("¡Gracias por tu compra!", isPresented: $showThankYou) {
+            Button("OK") {}
+        } message: {
+            Text("Tu pago se ha realizado correctamente.")
         }
     }
 
@@ -124,6 +188,59 @@ struct ClientCartView: View {
         var bag = Set<AnyCancellable>()
         @Published var status: String?
         var bridge: ClientCartCheckoutBridge?
+    }
+
+    // MARK: - Helpers de pago
+
+    private var paymentTitle: String {
+        switch selectedPaymentMethod {
+        case .transfer:
+            return "Pago por transferencia"
+        case .cash:
+            return "Pago en efectivo"
+        case .none:
+            return "Pago"
+        }
+    }
+
+    private var paymentMessage: String {
+        let totalString = String(format: "$ %.2f", cart.total)
+
+        switch selectedPaymentMethod {
+        case .transfer:
+            return """
+Pagarás por transferencia bancaria.
+
+Usa como ejemplo esta tarjeta:
+1234 1234 1234 1234
+
+Total a pagar: \(totalString)
+"""
+        case .cash:
+            return """
+Pagarás en efectivo.
+
+Total a pagar: \(totalString)
+"""
+        case .none:
+            return ""
+        }
+    }
+
+    private func processPayment() {
+        // 1. Enviar pedido por sockets
+        holder.bridge?.checkout(cartItems: cart.items)
+
+        // 2. Guardar detalle del pedido en SQLite
+        do {
+            try OrderDatabase.shared.saveOrder(items: cart.items, total: cart.total)
+            print("✅ Pedido guardado en SQLite")
+        } catch {
+            print("❌ Error al guardar pedido en SQLite: \(error)")
+        }
+
+        // 3. (Opcional) limpiar carrito una vez pagado
+        // cart.clear()
     }
 }
 

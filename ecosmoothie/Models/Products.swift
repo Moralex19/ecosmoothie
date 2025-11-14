@@ -5,18 +5,43 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 
-// Products.swift
-// Products.swift
 import Foundation
 
 // MARK: - Producto
 struct Product: Identifiable, Hashable, Codable {
+    enum Kind: String, Codable, CaseIterable {
+        case smoothie    // batido principal
+        case ingredient  // ingrediente extra
+    }
+
     let id: String
-    let name: String
-    let imageName: String
+    var name: String
+    var imageName: String
+    var price: Double
+    var kind: Kind
+
+    /// Inicializador principal (para código nuevo y para SQLite/JSON)
+    init(id: String, name: String, imageName: String, price: Double, kind: Kind) {
+        self.id = id
+        self.name = name
+        self.imageName = imageName
+        self.price = price
+        self.kind = kind
+    }
+
+    /// Inicializador de compatibilidad:
+    /// permite seguir usando `Product(id:name:imageName:)`
+    /// en previews o código viejo. Asigna precio 0 y tipo .smoothie.
+    init(id: String, name: String, imageName: String) {
+        self.id = id
+        self.name = name
+        self.imageName = imageName
+        self.price = 0
+        self.kind = .smoothie
+    }
 }
 
-// MARK: - Ingredientes
+// MARK: - Ingredientes (sistema de extras actual)
 /// Tipos de ingrediente y su precio por unidad
 enum IngredientKind: String, CaseIterable, Hashable, Codable {
     case cereza, frambuesa, picafresa, dulce, gomita

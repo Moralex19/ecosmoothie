@@ -39,7 +39,7 @@ struct ServerProfileView: View {
                 }
             }
         }
-        .navigationTitle("Perfil")
+        //.navigationTitle("Perfil")
         // refresca los totales cuando aparece
         .onAppear {
             sales.refreshAggregates()   // 👈 ahora es accesible

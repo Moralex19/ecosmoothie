@@ -5,23 +5,37 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 
-// ClientOrdersGridView.swift
-// ClientOrdersGridView.swift
 import SwiftUI
 
 struct ClientOrdersGridView: View {
     @EnvironmentObject var cart: CartStore
     @EnvironmentObject var productsStore: ProductsStore
 
-    @State private var selectedBasePrice: [String: Double] = [:] // product.id -> price
     @State private var selectedProduct: Product?
     @State private var showAssistant = false
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
-    private let priceTiers: [Double] = [5, 10, 15, 20, 25]
+    // Para detectar nuevos productos
+    @State private var previousProductIDs: Set<String> = []
+    @State private var showNewProductsBanner = false
+    @State private var newProductsMessage = ""
+
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
+    // Columnas responsivas: 2 en iPhone, 3 en iPad
+    private var columns: [GridItem] {
+        if hSizeClass == .compact {
+            return [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ]
+        } else {
+            return [
+                GridItem(.flexible(), spacing: 16),
+                GridItem(.flexible(), spacing: 16),
+                GridItem(.flexible(), spacing: 16)
+            ]
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,17 +50,15 @@ struct ClientOrdersGridView: View {
                     .background(Color.almond.opacity(0.12))
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(productsStore.products) { p in
                                 ProductCard(
                                     product: p,
-                                    selectedPrice: selectedBasePrice[p.id] ?? priceTiers.first!,
-                                    onTap: { selectedProduct = p },
-                                    onPriceChange: { selectedBasePrice[p.id] = $0 }
+                                    onTap: { selectedProduct = p }
                                 )
                             }
                         }
-                        .padding(12)
+                        .padding(16)
                     }
                 }
             }
@@ -61,7 +73,7 @@ struct ClientOrdersGridView: View {
             }
             // Sheet de detalle de producto
             .sheet(item: $selectedProduct) { product in
-                let base = selectedBasePrice[product.id] ?? priceTiers.first!
+                let base = product.price > 0 ? product.price : 10
                 ProductDetailView(product: product, basePrice: base)
                     .environmentObject(cart)
             }
@@ -69,6 +81,21 @@ struct ClientOrdersGridView: View {
             .sheet(isPresented: $showAssistant) {
                 VoiceAssistantView()
             }
+            // Banner cuando llegan nuevos productos
+            .overlay(alignment: .top) {
+                if showNewProductsBanner {
+                    NewProductsBanner(text: newProductsMessage)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+        .onAppear {
+            // Guardamos el estado inicial de los productos
+            previousProductIDs = Set(productsStore.products.map { $0.id })
+        }
+        .onChange(of: productsStore.products) { _ in
+            handleProductsChange()
         }
     }
 
@@ -76,30 +103,26 @@ struct ClientOrdersGridView: View {
     @ViewBuilder
     private func ProductCard(
         product: Product,
-        selectedPrice: Double,
-        onTap: @escaping () -> Void,
-        onPriceChange: @escaping (Double) -> Void
+        onTap: @escaping () -> Void
     ) -> some View {
         VStack(spacing: 8) {
-            Image(product.imageName) // cafe2, durazno2, fresa2, kiwi2, mango2
-                .resizable()
-                .scaledToFill()
-                .frame(height: 120)
+            productImage(for: product)
+                .aspectRatio(1, contentMode: .fill)   // cuadrada, no se deforma
+                .frame(maxWidth: .infinity)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            Text(product.name)
-                .font(.headline)
+            VStack(spacing: 4) {
+                Text(product.name)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
 
-            Picker("Precio", selection: Binding(
-                get: { selectedPrice },
-                set: { onPriceChange($0) })
-            ) {
-                ForEach(priceTiers, id: \.self) { p in
-                    Text(String(format: "$%.0f", p)).tag(p)
-                }
+                Text(String(format: "$ %.2f", product.price))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.matcha)
             }
-            .pickerStyle(.segmented)
+            .frame(maxWidth: .infinity)
 
             Button {
                 onTap()
@@ -115,6 +138,67 @@ struct ClientOrdersGridView: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.almond.opacity(0.35))
         )
+    }
+
+    // Imagen de producto: primero intenta desde disco (galería), luego asset
+    @ViewBuilder
+    private func productImage(for product: Product) -> some View {
+        if let uiImage = loadImageFromDisk(named: product.imageName) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Image(product.imageName)
+                .resizable()
+                .scaledToFill()
+        }
+    }
+
+    // MARK: - Manejo de nuevos productos
+
+    private func handleProductsChange() {
+        let currentIDs = Set(productsStore.products.map { $0.id })
+        let added = currentIDs.subtracting(previousProductIDs)
+
+        guard !added.isEmpty else {
+            previousProductIDs = currentIDs
+            return
+        }
+
+        let count = added.count
+        newProductsMessage = count == 1
+            ? "Se agregó 1 nuevo producto"
+            : "Se agregaron \(count) nuevos productos"
+
+        previousProductIDs = currentIDs
+
+        withAnimation {
+            showNewProductsBanner = true
+        }
+
+        // Ocultar banner después de unos segundos
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation {
+                showNewProductsBanner = false
+            }
+        }
+    }
+}
+
+// MARK: - Banner de nuevos productos
+
+private struct NewProductsBanner: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
+            .shadow(radius: 3)
     }
 }
 
