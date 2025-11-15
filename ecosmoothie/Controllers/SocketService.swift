@@ -15,16 +15,18 @@ enum SocketEvent: String {
     case catalogUpdated   = "catalog.updated"
     case orderCreatedAck  = "order.created_ack"
     case orderStatus      = "order.status_changed"
-    case orderCreate      = "order.create" // lo que envía el cliente
+    case orderCreate      = "order.create"         // broadcast desde el server hacia la app "caja"
+    case ordersSnapshot   = "orders.snapshot"      // snapshot inicial para la app "caja"
 }
 
 final class SocketService: ObservableObject {
     @Published var isConnected = false
     @Published var lastEvent: String = ""
 
-    let catalogSubject = PassthroughSubject<[Product], Never>()
-    let orderStatusSubject = PassthroughSubject<(orderId: String, status: String), Never>()
-    let orderIncomingSubject = PassthroughSubject<ServerOrder, Never>()
+    let catalogSubject        = PassthroughSubject<[Product], Never>()
+    let orderStatusSubject    = PassthroughSubject<(orderId: String, status: String), Never>()
+    let orderIncomingSubject  = PassthroughSubject<ServerOrder, Never>()
+    let ordersSnapshotSubject = PassthroughSubject<[ServerOrder], Never>()
 
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .default)
@@ -40,7 +42,7 @@ final class SocketService: ObservableObject {
     private var retry = 0
     private var pingTimer: Timer?
 
-    static let WS_URL = URL(string: "wss://tu-dominio.com/socket")!
+    static let WS_URL = URL(string: "ws://localhost:5050/ws")!
 
     init(url: URL = WS_URL) { self.url = url }
 
@@ -95,8 +97,11 @@ final class SocketService: ObservableObject {
         send(dict: ["type":"auth", "jwt": jwt, "shopId": shopId, "role": role.rawValue])
     }
 
+    /// Cliente (app consumidor) envía un pedido al backend
     func sendCreateOrder(payload: [String: Any]) {
-        send(dict: ["type": SocketEvent.orderCreate.rawValue, "shopId": shopId, "data": payload])
+        send(dict: ["type": SocketEvent.orderCreate.rawValue,
+                    "shopId": shopId,
+                    "data": payload])
     }
 
     func send(dict: [String: Any]) {
@@ -176,23 +181,41 @@ final class SocketService: ObservableObject {
                 }
 
             case SocketEvent.orderCreate.rawValue:
-                guard let data = json["data"] as? [String: Any],
-                      let itemsArr = data["items"] as? [[String: Any]],
-                      let itemsData = try? JSONSerialization.data(withJSONObject: itemsArr)
+                // Pedido nuevo broadcast desde el backend hacia la app "caja"
+                guard let dataDict = json["data"] as? [String: Any],
+                      let orderData = try? JSONSerialization.data(withJSONObject: dataDict)
                 else { return }
 
                 let decoder = JSONDecoder()
-                if let items = try? decoder.decode([CartItem].self, from: itemsData) {
-                    let order = ServerOrder(id: UUID().uuidString,
-                                            items: items,
-                                            createdAt: Date(),
-                                            status: .pending)
+                decoder.dateDecodingStrategy = .iso8601
+
+                if let order = try? decoder.decode(ServerOrder.self, from: orderData) {
                     DispatchQueue.main.async {
                         self.orderIncomingSubject.send(order)
                     }
-                    // ACK opcional al cliente
-                    send(dict: ["type": SocketEvent.orderCreatedAck.rawValue,
-                                "data": ["orderId": order.id]])
+                }
+
+            case SocketEvent.ordersSnapshot.rawValue:
+                // Snapshot inicial de pedidos cuando la app se conecta como servidor
+                guard let data = json["data"] as? [String: Any],
+                      let arr = data["orders"] as? [[String: Any]],
+                      let ordersData = try? JSONSerialization.data(withJSONObject: arr)
+                else { return }
+
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+
+                if let orders = try? decoder.decode([ServerOrder].self, from: ordersData) {
+                    DispatchQueue.main.async {
+                        self.ordersSnapshotSubject.send(orders)
+                    }
+                }
+
+            case SocketEvent.orderCreatedAck.rawValue:
+                // Si quieres, aquí podrías actualizar UI del cliente con el orderId real
+                // Por ahora solo lo mostramos en lastEvent
+                DispatchQueue.main.async {
+                    self.lastEvent = text
                 }
 
             default:

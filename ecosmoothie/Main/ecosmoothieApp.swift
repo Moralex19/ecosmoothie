@@ -9,8 +9,6 @@ import SwiftUI
 struct EcosmoothieApp: App {
     @StateObject private var session  = SessionManager()
     @StateObject private var cart     = CartStore()
-
-    // RootView pide estos como EnvironmentObject:
     @StateObject private var products = ProductsStore()
     @StateObject private var socket   = SocketService()
     @StateObject private var orders   = OrdersStore()
@@ -28,3 +26,4 @@ struct EcosmoothieApp: App {
         }
     }
 }
+

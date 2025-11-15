@@ -239,8 +239,11 @@ Total a pagar: \(totalString)
             print("❌ Error al guardar pedido en SQLite: \(error)")
         }
 
-        // 3. (Opcional) limpiar carrito una vez pagado
-        // cart.clear()
+        // 3. Limpiar carrito una vez pagado
+        cart.clear()
+
+        // 4. Resetear selección de método de pago por si acaso
+        selectedPaymentMethod = nil
     }
 }
 

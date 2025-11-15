@@ -5,7 +5,6 @@
 //  Created by Freddy Morales on 22/10/25.
 //
 
-// OrdersStore.swift
 import Foundation
 import Combine
 import SwiftUI
@@ -19,7 +18,9 @@ struct ServerOrder: Identifiable, Hashable, Codable {
     let createdAt: Date
     var status: Status
 
-    var total: Double { items.reduce(0) { $0 + $1.total } }
+    var total: Double {
+        items.reduce(0) { $0 + $1.total }
+    }
 }
 
 // MARK: - Store
@@ -31,10 +32,19 @@ final class OrdersStore: ObservableObject {
 
     private var bag = Set<AnyCancellable>()
 
-    // Vinculación con sockets (si usas sockets en el servidor)
+    // Vinculación con sockets (modo servidor)
     func bind(to socket: SocketService) {
-          bag.removeAll()
-        // PEDIDOS ENTRANTES DESDE CLIENTES
+        bag.removeAll()
+
+        // 1) Snapshot inicial al conectarse como servidor
+        socket.ordersSnapshotSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] snapshot in
+                self?.applySnapshot(snapshot)
+            }
+            .store(in: &bag)
+
+        // 2) Pedidos en tiempo real desde otros clientes
         socket.orderIncomingSubject
             .receive(on: DispatchQueue.main)
             .sink { [weak self] order in
@@ -42,7 +52,7 @@ final class OrdersStore: ObservableObject {
             }
             .store(in: &bag)
 
-        // CAMBIO DE ESTADO (p.ej. desde otra caja/servidor)
+        // 3) Cambios de estado (si el backend los envía)
         socket.orderStatusSubject
             .receive(on: DispatchQueue.main)
             .sink { [weak self] update in
@@ -55,9 +65,16 @@ final class OrdersStore: ObservableObject {
             .store(in: &bag)
     }
 
-    // Agrega pedido nuevo al inicio
+    // MARK: - Gestión de pedidos
+
+    private func applySnapshot(_ newOrders: [ServerOrder]) {
+        // Ordenamos del más reciente al más antiguo
+        self.orders = newOrders.sorted { $0.createdAt > $1.createdAt }
+    }
+
     func appendIncoming(_ order: ServerOrder) {
-        orders.insert(order, at: 0)
+        print("📥 Nuevo pedido recibido en servidor. Total: \(order.total)")
+        orders.insert(order, at: 0) // arriba de la lista
     }
 
     // MARK: - Operaciones por ID (mantengo tus firmas)

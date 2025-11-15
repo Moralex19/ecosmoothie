@@ -5,33 +5,35 @@
 //  Created by Freddy Morales on 21/10/25.
 //
 
-// ClientCartCheckoutBridge.swift
-// ClientCartCheckoutBridge.swift
 import Foundation
 import Combine
 
 final class ClientCartCheckoutBridge: ObservableObject {
     private let socket: SocketService
 
-    init(socket: SocketService) { self.socket = socket }
+    init(socket: SocketService) {
+        self.socket = socket
+    }
 
     func checkout(cartItems: [CartItem]) {
-        let itemsPayload: [[String: Any]] = cartItems.map { ci in
-            [
-                "productId": ci.product.id,
-                "name": ci.product.name,
-                "basePrice": ci.basePrice,
-                "ingredients": ci.ingredients.map {
-                    ["name": $0.kind.rawValue, "count": $0.count, "unitPrice": $0.pricePerUnit]
-                },
-                "total": ci.total
-            ]
+        let encoder = JSONEncoder()
+
+        // CartItem debe ser Codable (igual que Product y IngredientCount)
+        guard
+            let itemsData = try? encoder.encode(cartItems),
+            let itemsJSON = try? JSONSerialization.jsonObject(with: itemsData) as? [[String: Any]]
+        else {
+            print("❌ No se pudo serializar CartItem a JSON")
+            return
         }
+
         let total = cartItems.reduce(0) { $0 + $1.total }
 
-        socket.sendCreateOrder(payload: [
-            "items": itemsPayload,
+        let payload: [String: Any] = [
+            "items": itemsJSON,
             "total": total
-        ])
+        ]
+
+        socket.sendCreateOrder(payload: payload)
     }
 }

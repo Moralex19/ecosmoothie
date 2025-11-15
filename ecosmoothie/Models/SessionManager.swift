@@ -14,31 +14,74 @@ enum AppRole: String, CaseIterable, Codable {
 
 @MainActor
 final class SessionManager: ObservableObject {
+    // Estado de sesión / UI
     @Published var isAuthenticated = false
     @Published var userEmail: String? = nil
     @Published var selectedRole: AppRole = .client
     @Published var isAuthenticating = false
     @Published var viewResetID = UUID()     // ← resetea pilas de navegación
 
+    // Datos que usará el SocketService
+    @Published var jwt: String = ""
+    @Published var shopId: String = ""
+
+    /// Conveniencia: hay sesión iniciada
+    var isLoggedIn: Bool { isAuthenticated }
+
+    /// Conveniencia: mapeo a `SocketRole` (la enum que tienes en SocketService)
+    var socketRole: SocketRole? {
+        guard isAuthenticated else { return nil }
+        return (selectedRole == .client) ? .client : .server
+    }
+
+    // MARK: - Login
+
     func login(email: String, password: String, role: AppRole) async throws {
         isAuthenticating = true
         defer { isAuthenticating = false }
 
+        // Simulación de red
         try await Task.sleep(nanoseconds: 200_000_000)
+
         guard email.lowercased() == "ecosmoothie@gmail.com", password == "12345" else {
-            throw NSError(domain: "Auth", code: 401,
-                          userInfo: [NSLocalizedDescriptionKey: "Credenciales inválidas"])
+            throw NSError(
+                domain: "Auth",
+                code: 401,
+                userInfo: [NSLocalizedDescriptionKey: "Credenciales inválidas"]
+            )
         }
-        userEmail = email
+
+        // ✅ Datos de sesión
+        userEmail    = email
         selectedRole = role
         isAuthenticated = true
-        viewResetID = UUID()                // ← reset al iniciar sesión
+
+        // ✅ Configurar credenciales para el socket según rol
+        switch role {
+        case .client:
+            jwt    = "jwt_real"   // el que usas en el server para cliente
+            shopId = "tienda-1"
+
+        case .server:
+            jwt    = "jwt_server" // el que usas en el server para server
+            shopId = "tienda-1"
+        }
+
+        // reset de navegación
+        viewResetID = UUID()
     }
+
+    // MARK: - Logout
 
     func logout() {
         userEmail = nil
         isAuthenticated = false
         selectedRole = .client
-        viewResetID = UUID()                // ← reset al cerrar sesión
+
+        // limpiar datos del socket
+        jwt = ""
+        shopId = ""
+
+        viewResetID = UUID()      // ← reset al cerrar sesión
     }
 }

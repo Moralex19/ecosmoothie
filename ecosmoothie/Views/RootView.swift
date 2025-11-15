@@ -15,6 +15,31 @@ struct RootView: View {
 
     @State private var showSplash = true
 
+    // MARK: - Manejo del WebSocket según sesión + rol
+    private func updateSocket() {
+        // Si NO hay sesión → desconectamos y listo
+        guard session.isAuthenticated else {
+            socket.disconnect()
+            return
+        }
+
+        // Mapear AppRole -> SocketRole
+        let socketRole: SocketRole = (session.selectedRole == .client) ? .client : .server
+
+        // DEMO: mismos datos para ambos roles (ajusta si luego quieres JWT real)
+        let jwt    = (socketRole == .client) ? "jwt_real"   : "jwt_server"
+        let shopId = "tienda-1"
+
+        // Evitar conexiones viejas / dobles
+        socket.disconnect()
+
+        socket.connect(
+            jwt: jwt,
+            shopId: shopId,
+            role: socketRole
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             Group {
@@ -28,7 +53,7 @@ struct RootView: View {
                         NavigationStack {
                             AuthView()
                         }
-                        .id(session.viewResetID)         // ← clave para logout limpio
+                        .id(session.viewResetID) // ← clave para logout limpio
                     } else {
                         switch session.selectedRole {
                         case .client:
@@ -44,7 +69,7 @@ struct RootView: View {
                                 .environmentObject(products)
                                 .environmentObject(orders)
                                 .environmentObject(sales)
-                                .id(session.viewResetID) // ← idem por si usas servidor
+                                .id(session.viewResetID) // ← idem para servidor
                         }
                     }
                 }
@@ -59,6 +84,24 @@ struct RootView: View {
             }
         }
         .disabled(session.isAuthenticating)
+
+        // MARK: - Hooks de ciclo de vida
+        .onAppear {
+            // Vincular stores UNA VEZ (los sinks internos se limpian en cada bind)
+            products.bind(to: socket)
+            orders.bind(to: socket)
+
+            // Ajustar conexión inicial del socket según cómo esté la sesión
+            updateSocket()
+        }
+        // Cuando se loguea / hace logout
+        .onChange(of: session.isAuthenticated) { _, _ in
+            updateSocket()
+        }
+        // Cuando cambia de rol (cliente/servidor)
+        .onChange(of: session.selectedRole) { _, _ in
+            updateSocket()
+        }
     }
 }
 
