@@ -98,37 +98,40 @@ private struct OrderRow: View {
     }
 }
 
-#Preview {
-    // Ingredientes de prueba
-    let ings: [IngredientCount] = [
-        IngredientCount(kind: .cereza, count: 2),
-        IngredientCount(kind: .gomita, count: 1)
-    ]
+struct ServerOrdersListView_Previews: PreviewProvider {
+    static var previews: some View {
+        let cartItem = CartItem(
+            product: Product(
+                id: "p-fresa",
+                name: "Fresa",
+                imageName: "fresa2",
+                price: 15,
+                kind: .smoothie
+            ),
+            basePrice: 10,
+            ingredients: []
+        )
 
-    // Producto + item de carrito de prueba
-    let product = Product(id: "p-fresa", name: "Fresa", imageName: "fresa2")
-    let cartItem = CartItem(product: product, basePrice: 10, ingredients: ings)
+        let order1 = ServerOrder(
+            id: "ORDER123456",
+            items: [cartItem],
+            createdAt: Date().addingTimeInterval(-600),
+            status: .pending
+        )
 
-    // Pedidos de prueba
-    let order1 = ServerOrder(
-        id: "ORDER123456",
-        items: [cartItem],
-        createdAt: Date().addingTimeInterval(-600),
-        status: .pending
-    )
+        let order2 = ServerOrder(
+            id: "ORDER654321",
+            items: [cartItem, cartItem],
+            createdAt: Date().addingTimeInterval(-3600),
+            status: .paid
+        )
 
-    let order2 = ServerOrder(
-        id: "ORDER654321",
-        items: [cartItem, cartItem],
-        createdAt: Date().addingTimeInterval(-3600),
-        status: .paid
-    )
+        let store = OrdersStore()
+        store._setPreviewOrders([order1, order2])
 
-    let store = OrdersStore()
-    store._setPreviewOrders([order1, order2])
-
-    return NavigationStack {
-        ServerOrdersListView()
-            .environmentObject(store)
+        return NavigationStack {
+            ServerOrdersListView()
+                .environmentObject(store)
+        }
     }
 }

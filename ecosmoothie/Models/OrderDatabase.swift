@@ -1,4 +1,3 @@
-//
 //  OrderDatabase.swift
 //  ecosmoothie
 //
@@ -27,7 +26,8 @@ final class OrderDatabase {
 
     private func openDatabase() {
         let fileManager = FileManager.default
-        guard let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        guard let documentsURL = fileManager.urls(for: .documentDirectory,
+                                                  in: .userDomainMask).first else {
             print("❌ No se encontró el directorio de documentos")
             return
         }
@@ -65,25 +65,25 @@ final class OrderDatabase {
             FOREIGN KEY(order_id) REFERENCES orders(id)
         );
         """
-        
+
         let createSalesSQL = """
-            CREATE TABLE IF NOT EXISTS sales (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_identifier TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                total REAL NOT NULL
-            );
-            """
-        
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_identifier TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            total REAL NOT NULL
+        );
+        """
+
         let createProductsSQL = """
-           CREATE TABLE IF NOT EXISTS products (
-               id TEXT PRIMARY KEY,
-               name TEXT NOT NULL,
-               image_name TEXT,
-               price REAL NOT NULL,
-               kind TEXT NOT NULL
-           );
-           """
+        CREATE TABLE IF NOT EXISTS products (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            image_name TEXT,
+            price REAL NOT NULL,
+            kind TEXT NOT NULL
+        );
+        """
 
         if sqlite3_exec(db, createOrdersSQL, nil, nil, nil) != SQLITE_OK {
             print("❌ Error creando tabla orders")
@@ -96,11 +96,10 @@ final class OrderDatabase {
         if sqlite3_exec(db, createSalesSQL, nil, nil, nil) != SQLITE_OK {
             print("❌ Error creando tabla sales")
         }
-        
+
         if sqlite3_exec(db, createProductsSQL, nil, nil, nil) != SQLITE_OK {
             print("❌ Error creando tabla products")
         }
-        
     }
 
     enum DatabaseError: Error {
@@ -111,6 +110,8 @@ final class OrderDatabase {
         case upsertProduct
         case deleteProduct
     }
+
+    // MARK: - Pedidos
 
     /// Guarda un pedido completo (encabezado + detalle) en SQLite.
     /// Se llama únicamente cuando el usuario paga y envía el pedido.
@@ -123,7 +124,7 @@ final class OrderDatabase {
         // Iniciar transacción para asegurar atomicidad
         sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
 
-        // 1. Insertar encabezado del pedido
+        // 1. Encabezado
         let insertOrderSQL = "INSERT INTO orders (created_at, total) VALUES (?, ?);"
         var orderStmt: OpaquePointer?
 
@@ -147,7 +148,7 @@ final class OrderDatabase {
         let orderId = sqlite3_last_insert_rowid(db)
         sqlite3_finalize(orderStmt)
 
-        // 2. Insertar detalle (cada batido + extras)
+        // 2. Detalle (cada batido + extras)
         let insertItemSQL = """
         INSERT INTO order_items
         (order_id, product_name, base_price, extras, extras_cost, line_total)
@@ -161,9 +162,10 @@ final class OrderDatabase {
         }
 
         for item in items {
+            // 👇 AHORA usamos ingredient.name, porque IngredientCount ya no tiene `kind`
             let extrasDescription = item.ingredients
                 .map { ingredient in
-                    let name = String(describing: ingredient.kind)
+                    let name = ingredient.name
                     return "\(name) x\(ingredient.count)"
                 }
                 .joined(separator: ", ")
@@ -190,9 +192,9 @@ final class OrderDatabase {
         sqlite3_finalize(itemStmt)
         sqlite3_exec(db, "COMMIT", nil, nil, nil)
     }
-    
-    /// Guarda una venta asociada a un pedido del servidor.
-    /// Se llama cuando el servidor confirma que el pedido está listo / entregado.
+
+    // MARK: - Ventas
+
     func saveSale(for order: ServerOrder) throws {
         guard let db = db else {
             print("❌ Base de datos no inicializada")
@@ -212,7 +214,6 @@ final class OrderDatabase {
         let formatter = ISO8601DateFormatter()
         let nowString = formatter.string(from: Date())
 
-        // Suponiendo que ServerOrder.id es String
         sqlite3_bind_text(stmt, 1, (order.id as NSString).utf8String, -1, nil)
         sqlite3_bind_text(stmt, 2, (nowString as NSString).utf8String, -1, nil)
         sqlite3_bind_double(stmt, 3, order.total)
@@ -223,13 +224,11 @@ final class OrderDatabase {
         }
 
         sqlite3_finalize(stmt)
-
         print("✅ Venta guardada para pedido \(order.id) por total \(order.total)")
     }
-    
+
     // MARK: - Catálogo de productos
 
-    /// Inserta o actualiza un producto en SQLite.
     func upsertProduct(_ product: Product) throws {
         guard let db = db else {
             print("❌ Base de datos no inicializada")
@@ -266,7 +265,6 @@ final class OrderDatabase {
         print("✅ Producto guardado/actualizado: \(product.name)")
     }
 
-    /// Elimina un producto por ID.
     func deleteProduct(id: String) throws {
         guard let db = db else {
             print("❌ Base de datos no inicializada")
@@ -290,5 +288,4 @@ final class OrderDatabase {
         sqlite3_finalize(stmt)
         print("🗑️ Producto eliminado con id \(id)")
     }
-
 }

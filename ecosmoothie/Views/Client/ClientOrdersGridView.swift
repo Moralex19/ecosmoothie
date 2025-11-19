@@ -14,14 +14,17 @@ struct ClientOrdersGridView: View {
     @State private var selectedProduct: Product?
     @State private var showAssistant = false
 
-    // Para detectar nuevos productos
     @State private var previousProductIDs: Set<String> = []
     @State private var showNewProductsBanner = false
     @State private var newProductsMessage = ""
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
-    // Columnas responsivas: 2 en iPhone, 3 en iPad
+    // Solo sabores base
+    private var smoothies: [Product] {
+        productsStore.products.filter { $0.kind == .smoothie }
+    }
+
     private var columns: [GridItem] {
         if hSizeClass == .compact {
             return [
@@ -40,7 +43,7 @@ struct ClientOrdersGridView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if productsStore.products.isEmpty {
+                if smoothies.isEmpty {
                     VStack(spacing: 10) {
                         ProgressView()
                         Text("Cargando catálogo…")
@@ -51,7 +54,7 @@ struct ClientOrdersGridView: View {
                 } else {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 16) {
-                            ForEach(productsStore.products) { p in
+                            ForEach(smoothies) { p in
                                 ProductCard(
                                     product: p,
                                     onTap: { selectedProduct = p }
@@ -62,7 +65,6 @@ struct ClientOrdersGridView: View {
                     }
                 }
             }
-            //.navigationTitle("Tomar pedidos")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAssistant = true } label: {
@@ -71,17 +73,14 @@ struct ClientOrdersGridView: View {
                     .accessibilityLabel("Asistente por voz")
                 }
             }
-            // Sheet de detalle de producto
             .sheet(item: $selectedProduct) { product in
-                let base = product.price > 0 ? product.price : 10
+                let base = product.price > 0 ? product.price : 15
                 ProductDetailView(product: product, basePrice: base)
                     .environmentObject(cart)
             }
-            // Sheet del asistente por voz (escucha + TTS)
             .sheet(isPresented: $showAssistant) {
                 VoiceAssistantView()
             }
-            // Banner cuando llegan nuevos productos
             .overlay(alignment: .top) {
                 if showNewProductsBanner {
                     NewProductsBanner(text: newProductsMessage)
@@ -91,7 +90,6 @@ struct ClientOrdersGridView: View {
             }
         }
         .onAppear {
-            // Guardamos el estado inicial de los productos
             previousProductIDs = Set(productsStore.products.map { $0.id })
         }
         .onChange(of: productsStore.products) { _ in
@@ -100,14 +98,17 @@ struct ClientOrdersGridView: View {
     }
 
     // MARK: - Card
+
     @ViewBuilder
     private func ProductCard(
         product: Product,
         onTap: @escaping () -> Void
     ) -> some View {
+        let displayPrice = product.price > 0 ? product.price : 15.0
+
         VStack(spacing: 8) {
             productImage(for: product)
-                .aspectRatio(1, contentMode: .fill)   // cuadrada, no se deforma
+                .aspectRatio(1, contentMode: .fill)
                 .frame(maxWidth: .infinity)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -117,7 +118,7 @@ struct ClientOrdersGridView: View {
                     .font(.headline)
                     .multilineTextAlignment(.center)
 
-                Text(String(format: "$ %.2f", product.price))
+                Text(String(format: "$ %.2f", displayPrice))
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(Color.matcha)
@@ -140,17 +141,18 @@ struct ClientOrdersGridView: View {
         )
     }
 
-    // Imagen de producto: primero intenta desde disco (galería), luego asset
     @ViewBuilder
     private func productImage(for product: Product) -> some View {
-        if let uiImage = loadImageFromDisk(named: product.imageName) {
+        if let uiImage = loadImageFromDisk(named: product.imageName), !product.imageName.isEmpty {
             Image(uiImage: uiImage)
                 .resizable()
                 .scaledToFill()
-        } else {
+        } else if !product.imageName.isEmpty {
             Image(product.imageName)
                 .resizable()
                 .scaledToFill()
+        } else {
+            Color.almond.opacity(0.4) // placeholder para ingredientes sin foto
         }
     }
 
@@ -176,7 +178,6 @@ struct ClientOrdersGridView: View {
             showNewProductsBanner = true
         }
 
-        // Ocultar banner después de unos segundos
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             withAnimation {
                 showNewProductsBanner = false
@@ -185,7 +186,7 @@ struct ClientOrdersGridView: View {
     }
 }
 
-// MARK: - Banner de nuevos productos
+// MARK: - Banner
 
 private struct NewProductsBanner: View {
     let text: String
@@ -203,20 +204,9 @@ private struct NewProductsBanner: View {
 }
 
 #Preview {
-    let cart = CartStore()
-    let store = ProductsStore()
-    // Catálogo de prueba
-    store._setPreviewProducts([
-        Product(id: "p-cafe",    name: "Café2",    imageName: "cafe2"),
-        Product(id: "p-durazno", name: "Durazno2", imageName: "durazno2"),
-        Product(id: "p-fresa",   name: "Fresa2",   imageName: "fresa2"),
-        Product(id: "p-kiwi",    name: "Kiwi2",    imageName: "kiwi2"),
-        Product(id: "p-mango",   name: "Mango2",   imageName: "mango2"),
-    ])
-
-    return NavigationStack {
+    NavigationStack {
         ClientOrdersGridView()
-            .environmentObject(cart)
-            .environmentObject(store)
+            .environmentObject(CartStore())
+            .environmentObject(ProductsStore.preview)
     }
 }

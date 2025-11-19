@@ -15,8 +15,8 @@ enum SocketEvent: String {
     case catalogUpdated   = "catalog.updated"
     case orderCreatedAck  = "order.created_ack"
     case orderStatus      = "order.status_changed"
-    case orderCreate      = "order.create"         // broadcast desde el server hacia la app "caja"
-    case ordersSnapshot   = "orders.snapshot"      // snapshot inicial para la app "caja"
+    case orderCreate      = "order.create"
+    case ordersSnapshot   = "orders.snapshot"
 }
 
 final class SocketService: ObservableObject {
@@ -33,18 +33,15 @@ final class SocketService: ObservableObject {
     private let url: URL
 
     private var jwt: String = ""
-    var shopId: String = ""                 // internal para sendCatalog
+    var shopId: String = ""
     private var role: SocketRole = .client
 
-    // 🔒 Control de estado para evitar conexiones duplicadas + reconexión controlada
     private var isConnecting = false
     private var shouldReconnect = false
     private var retry = 0
     private var pingTimer: Timer?
 
-    // OJO: usar la IP local de tu Mac cuando pruebes en dispositivos físicos
-    // Ejemplo: ws://192.168.1.195:5050/ws
-    static let WS_URL = URL(string: "ws://192.168.1.195:5050/ws")!
+    static let WS_URL = URL(string: "ws://10.34.216.62:5050/ws")!
 
     init(url: URL = WS_URL) { self.url = url }
 
@@ -55,10 +52,8 @@ final class SocketService: ObservableObject {
 
     // MARK: - Conexión
 
-    /// Conecta si no hay una conexión vigente o en progreso.
     @MainActor
     func connect(jwt: String, shopId: String, role: SocketRole) {
-        // Evita conexiones duplicadas que causan "lag"
         if isConnected || isConnecting { return }
 
         self.jwt = jwt
@@ -79,10 +74,9 @@ final class SocketService: ObservableObject {
         startPing()
     }
 
-    /// Desconecta y detiene reconexión/keep-alive.
     @MainActor
     func disconnect() {
-        shouldReconnect = false             // ← no volver a reconectar
+        shouldReconnect = false
         isConnected = false
         isConnecting = false
         stopPing()
@@ -90,7 +84,7 @@ final class SocketService: ObservableObject {
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
 
-        retry = 0                           // ← corta reconexiones en segundo plano
+        retry = 0
     }
 
     // MARK: - Mensajería
@@ -99,7 +93,6 @@ final class SocketService: ObservableObject {
         send(dict: ["type":"auth", "jwt": jwt, "shopId": shopId, "role": role.rawValue])
     }
 
-    /// Cliente (app consumidor) envía un pedido al backend
     func sendCreateOrder(payload: [String: Any]) {
         send(dict: ["type": SocketEvent.orderCreate.rawValue,
                     "shopId": shopId,
@@ -135,7 +128,6 @@ final class SocketService: ObservableObject {
                     self.reconnect()
                 }
             case .success(let message):
-                // Maneja y sigue escuchando
                 self.handle(message)
                 self.listen()
             }
@@ -161,13 +153,25 @@ final class SocketService: ObservableObject {
 
             case SocketEvent.catalogUpdated.rawValue:
                 if let data = json["data"] as? [String: Any],
-                   let arr = data["products"] as? [[String: Any]] {
+                   let arr  = data["products"] as? [[String: Any]] {
+
                     let mapped = arr.compactMap { dict -> Product? in
-                        guard let id = dict["id"] as? String,
-                              let name = dict["name"] as? String,
-                              let imageName = dict["imageName"] as? String else { return nil }
-                        return Product(id: id, name: name, imageName: imageName)
+                        guard let id   = dict["id"]   as? String,
+                              let name = dict["name"] as? String
+                        else { return nil }
+
+                        let imageName = dict["imageName"] as? String ?? ""
+                        let price     = dict["price"] as? Double ?? 0
+                        let kindRaw   = dict["kind"] as? String ?? Product.Kind.smoothie.rawValue
+                        let kind      = Product.Kind(rawValue: kindRaw) ?? .smoothie
+
+                        return Product(id: id,
+                                       name: name,
+                                       imageName: imageName,
+                                       price: price,
+                                       kind: kind)
                     }
+
                     DispatchQueue.main.async {
                         self.catalogSubject.send(mapped)
                     }
@@ -175,15 +179,14 @@ final class SocketService: ObservableObject {
 
             case SocketEvent.orderStatus.rawValue:
                 if let data = json["data"] as? [String: Any],
-                   let oid = data["orderId"] as? String,
-                   let st  = data["status"] as? String {
+                   let oid  = data["orderId"] as? String,
+                   let st   = data["status"]   as? String {
                     DispatchQueue.main.async {
                         self.orderStatusSubject.send((oid, st))
                     }
                 }
 
             case SocketEvent.orderCreate.rawValue:
-                // Pedido nuevo broadcast desde el backend hacia la app "caja"
                 guard let dataDict = json["data"] as? [String: Any],
                       let orderData = try? JSONSerialization.data(withJSONObject: dataDict)
                 else { return }
@@ -198,9 +201,8 @@ final class SocketService: ObservableObject {
                 }
 
             case SocketEvent.ordersSnapshot.rawValue:
-                // Snapshot inicial de pedidos cuando la app se conecta como servidor
                 guard let data = json["data"] as? [String: Any],
-                      let arr = data["orders"] as? [[String: Any]],
+                      let arr  = data["orders"] as? [[String: Any]],
                       let ordersData = try? JSONSerialization.data(withJSONObject: arr)
                 else { return }
 
@@ -214,8 +216,6 @@ final class SocketService: ObservableObject {
                 }
 
             case SocketEvent.orderCreatedAck.rawValue:
-                // Si quieres, aquí podrías actualizar UI del cliente con el orderId real
-                // Por ahora solo lo mostramos en lastEvent
                 DispatchQueue.main.async {
                     self.lastEvent = text
                 }
@@ -231,16 +231,15 @@ final class SocketService: ObservableObject {
         }
     }
 
-    // MARK: - Reconexión exponencial (respetando flags)
+    // MARK: - Reconexión
 
     private func reconnect() {
-        guard shouldReconnect else { return }        // ← no reconectar si se llamó disconnect()
+        guard shouldReconnect else { return }
         retry = min(retry + 1, 6)
-        let delay = pow(2.0, Double(retry))         // 2,4,8,16,32,64 (seg máx ~64)
+        let delay = pow(2.0, Double(retry))
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.shouldReconnect else { return }
-            // Evita múltiples reconexiones si ya se reconectó por otro lado
             if self.isConnected || self.isConnecting { return }
 
             self.isConnecting = true
@@ -257,11 +256,10 @@ final class SocketService: ObservableObject {
         }
     }
 
-    // MARK: - Keep-alive (ping)
+    // MARK: - Ping
 
     private func startPing() {
         stopPing()
-        // Ping cada 20s para mantener viva la conexión detrás de NAT/firewalls
         pingTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             guard let self, let task = self.task else { return }
             task.sendPing { error in
@@ -275,7 +273,6 @@ final class SocketService: ObservableObject {
                 }
             }
         }
-        // Evitar que el timer bloquee la UI
         RunLoop.main.add(pingTimer!, forMode: .common)
     }
 
@@ -285,13 +282,26 @@ final class SocketService: ObservableObject {
     }
 }
 
-// Helper ya usado por tu ServerProductsView
+// MARK: - Catálogo → socket
+
 extension SocketService {
     func sendCatalog(_ products: [Product]) {
-        let arr = products.map { ["id": $0.id, "name": $0.name, "imageName": $0.imageName] }
+        let arr: [[String: Any]] = products.map {
+            [
+                "id": $0.id,
+                "name": $0.name,
+                "imageName": $0.imageName,
+                "price": $0.price,
+                "kind": $0.kind.rawValue
+            ]
+        }
+
         let payload: [String: Any] = [
             "type": SocketEvent.catalogUpdated.rawValue,
-            "data": ["products": arr, "shopId": shopId]
+            "data": [
+                "products": arr,
+                "shopId": shopId
+            ]
         ]
         send(dict: payload)
     }

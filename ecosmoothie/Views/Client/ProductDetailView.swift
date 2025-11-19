@@ -6,28 +6,19 @@
 //
 
 // ProductDetailView.swift
-// ProductDetailView.swift
 import SwiftUI
 
 struct ProductDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var cart: CartStore
+    @EnvironmentObject var productsStore: ProductsStore
 
     let product: Product
     let basePrice: Double
 
-    // Lista editable de ingredientes (tipo + contador)
-    @State private var ingredients: [IngredientCount] = [
-        .init(kind: .cereza,    count: 0),
-        .init(kind: .frambuesa, count: 0),
-        .init(kind: .picafresa, count: 0),
-        .init(kind: .dulce,     count: 0),
-        .init(kind: .gomita,    count: 0)
-    ]
-
+    @State private var ingredients: [IngredientCount] = []
     @State private var showCartPendingAlert = false
 
-    // Totales
     private var extrasTotal: Double {
         ingredients.reduce(0) { $0 + $1.subtotal }
     }
@@ -38,12 +29,11 @@ struct ProductDetailView: View {
             VStack(spacing: 16) {
                 header
 
-                // Lista de ingredientes con Stepper por cada uno
                 List {
-                    ForEach($ingredients, id: \.kind) { $ing in
+                    ForEach($ingredients) { $ing in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ing.kind.displayName)
+                                Text(ing.name)
                                 Text(String(format: "+ $%.0f c/u", ing.pricePerUnit))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -61,14 +51,14 @@ struct ProductDetailView: View {
                 .scrollContentBackground(.hidden)
                 .background(Color.almond.opacity(0.12))
 
-                // Resumen
                 summary
-
-                // Acciones
                 actionButtons
             }
             .navigationTitle(product.name)
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .onAppear {
+            loadIngredients()
         }
         .alert("Carrito pendiente", isPresented: $showCartPendingAlert) {
             Button("OK", role: .cancel) {}
@@ -77,15 +67,31 @@ struct ProductDetailView: View {
         }
     }
 
+    // MARK: - Cargar ingredientes dinámicos
+
+    private func loadIngredients() {
+        let ingredientProducts = productsStore.products.filter { $0.kind == .ingredient }
+        ingredients = ingredientProducts.map {
+            IngredientCount(
+                productId: $0.id,
+                name: $0.name,
+                pricePerUnit: $0.price,
+                count: 0
+            )
+        }
+    }
+
     // MARK: - Subviews
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image(product.imageName)
-                .resizable()
-                .scaledToFit()
-                .frame(height: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            if !product.imageName.isEmpty {
+                Image(product.imageName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
             Text("Selecciona ingredientes")
                 .font(.headline)
                 .foregroundStyle(.secondary)
@@ -121,7 +127,6 @@ struct ProductDetailView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            // Comprar directo
             Button {
                 if cart.count > 0 {
                     showCartPendingAlert = true
@@ -134,7 +139,6 @@ struct ProductDetailView: View {
             }
             .buttonStyle(.bordered)
 
-            // Agregar al carrito
             Button {
                 addToCartAndDismiss()
             } label: {
@@ -148,8 +152,6 @@ struct ProductDetailView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: - Helpers
-
     private func addToCartAndDismiss() {
         let selected = ingredients.filter { $0.count > 0 }
         let item = CartItem(product: product, basePrice: basePrice, ingredients: selected)
@@ -158,11 +160,13 @@ struct ProductDetailView: View {
             dismiss()
         }
     }
-
 }
 
 #Preview {
-    ProductDetailView(product: .init(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
-                      basePrice: 10)
-        .environmentObject(CartStore())
+    ProductDetailView(
+        product: .init(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
+        basePrice: 15
+    )
+    .environmentObject(CartStore())
+    .environmentObject(ProductsStore.preview)
 }

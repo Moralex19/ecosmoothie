@@ -8,10 +8,11 @@
 import Foundation
 
 // MARK: - Producto
+
 struct Product: Identifiable, Hashable, Codable {
     enum Kind: String, Codable, CaseIterable {
         case smoothie    // batido principal
-        case ingredient  // ingrediente extra
+        case ingredient  // ingrediente extra (se edita solo en servidor)
     }
 
     let id: String
@@ -21,7 +22,13 @@ struct Product: Identifiable, Hashable, Codable {
     var kind: Kind
 
     /// Inicializador principal (para código nuevo y para SQLite/JSON)
-    init(id: String, name: String, imageName: String, price: Double, kind: Kind) {
+    init(
+        id: String,
+        name: String,
+        imageName: String,
+        price: Double,
+        kind: Kind
+    ) {
         self.id = id
         self.name = name
         self.imageName = imageName
@@ -33,55 +40,68 @@ struct Product: Identifiable, Hashable, Codable {
     /// permite seguir usando `Product(id:name:imageName:)`
     /// en previews o código viejo. Asigna precio 0 y tipo .smoothie.
     init(id: String, name: String, imageName: String) {
-        self.id = id
-        self.name = name
-        self.imageName = imageName
-        self.price = 0
-        self.kind = .smoothie
+        self.init(
+            id: id,
+            name: name,
+            imageName: imageName,
+            price: 0,
+            kind: .smoothie
+        )
     }
 }
 
-// MARK: - Ingredientes (sistema de extras actual)
-/// Tipos de ingrediente y su precio por unidad
-enum IngredientKind: String, CaseIterable, Hashable, Codable {
-    case cereza, frambuesa, picafresa, dulce, gomita
-
-    var price: Double {
-        switch self {
-        case .cereza:    return 1
-        case .frambuesa: return 3
-        case .picafresa: return 4
-        case .dulce:     return 5
-        case .gomita:    return 2
-        }
-    }
-
-    var displayName: String { rawValue.capitalized }
-}
-
-/// Cantidad seleccionada de un ingrediente
+// MARK: - Ingrediente en el carrito
+/// Representa la selección de un ingrediente (que en catálogo es un `Product.kind == .ingredient`)
 struct IngredientCount: Identifiable, Hashable, Codable {
-    let id: UUID = UUID()
-    var kind: IngredientKind
-    var count: Int = 0
+    let id: UUID
+    /// id del Product que representa este ingrediente
+    let productId: String
+    var name: String
+    var pricePerUnit: Double
+    var count: Int
 
-    // Computadas ⇒ NO intervienen en Codable
-    var pricePerUnit: Double { kind.price }
     var subtotal: Double { Double(count) * pricePerUnit }
+
+    init(
+        id: UUID = UUID(),
+        productId: String,
+        name: String,
+        pricePerUnit: Double,
+        count: Int = 0
+    ) {
+        self.id = id
+        self.productId = productId
+        self.name = name
+        self.pricePerUnit = pricePerUnit
+        self.count = count
+    }
 }
 
 // MARK: - Ítem de carrito
+
 struct CartItem: Identifiable, Hashable, Codable {
-    let id: UUID = UUID()
-    let product: Product
-    let basePrice: Double
+    let id: UUID
+    let product: Product          // smoothie elegido
+    let basePrice: Double         // precio base del smoothie
     var ingredients: [IngredientCount]
 
-    // Computada ⇒ NO interviene en Codable
+    /// Total = base + extras
     var total: Double {
         basePrice + ingredients.reduce(0) { $0 + $1.subtotal }
     }
+
+    init(
+        id: UUID = UUID(),
+        product: Product,
+        basePrice: Double,
+        ingredients: [IngredientCount]
+    ) {
+        self.id = id
+        self.product = product
+        self.basePrice = basePrice
+        self.ingredients = ingredients
+    }
 }
 
-// (Opcional) Compatibilidad si en otras vistas usabas IngredientOption
+// Compatibilidad si antes usabas IngredientOption
 typealias IngredientOption = IngredientCount

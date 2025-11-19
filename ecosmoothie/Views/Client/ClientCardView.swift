@@ -286,30 +286,30 @@ private struct CartRow: View {
         .padding(.vertical, 6)
     }
 }
-
+/*
 #Preview {
     let cart = CartStore()
 
-    // Ingredientes con tipo explícito
-    let ings: [IngredientCount] = [
-        IngredientCount(kind: .cereza, count: 2),
-        IngredientCount(kind: .gomita, count: 1)
-    ]
-
+    // Item de carrito de prueba SIN ingredientes
     let item = CartItem(
-        product: Product(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
+        product: Product(
+            id: "p-fresa",
+            name: "Fresa",
+            imageName: "fresa2",
+            price: 15,
+            kind: .smoothie
+        ),
         basePrice: 10,
-        ingredients: ings
+        ingredients: []        
     )
-
-    // Si tu CartStore está @MainActor, hazlo en el main:
-    Task { @MainActor in cart.add(item) }
+    cart._setPreviewItems([item])
 
     let socket = SocketService()
 
-    return NavigationStack {
+    NavigationStack {          // 👈 OJO: SIN `return`
         ClientCartView()
             .environmentObject(cart)
             .environmentObject(socket)
     }
 }
+*/

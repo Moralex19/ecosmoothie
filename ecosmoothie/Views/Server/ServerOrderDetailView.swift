@@ -18,33 +18,42 @@ struct ServerOrderDetailView: View {
 
     var body: some View {
         List {
+            // MARK: - Productos
             Section("Productos") {
-                ForEach(order.items, id: \.id) { item in
-                    VStack(alignment: .leading, spacing: 4) {
+                ForEach(order.items) { item in   // CartItem es Identifiable
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Nombre del batido
                         Text(item.product.name)
                             .font(.headline)
 
+                        // Ingredientes (si hay)
                         if !item.ingredients.isEmpty {
-                            Text(
-                                item.ingredients
-                                    .map { "\($0.kind.rawValue) x\($0.count)" }
-                                    .joined(separator: ", ")
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(item.ingredients) { ing in
+                                    HStack {
+                                        Text("\(ing.name) x\( ing.count )")
+                                        Spacer()
+                                        Text(String(format: "+$%.0f", ing.subtotal))
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
                         }
 
+                        // Total de la línea
                         HStack {
                             Spacer()
-                            Text(item.total, format: .currency(code: "USD"))
+                            Text(String(format: "$%.0f", item.total))
                                 .foregroundStyle(Color.matcha)
                                 .fontWeight(.semibold)
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 4)
                 }
             }
 
+            // MARK: - Resumen
             Section {
                 HStack {
                     Text("Total").fontWeight(.semibold)
@@ -55,7 +64,7 @@ struct ServerOrderDetailView: View {
                 }
             }
 
-            // 🔹 Barra de arrastre dentro de la lista (se ve al final)
+            // MARK: - Slide to confirm
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Confirmar pedido")
@@ -74,6 +83,7 @@ struct ServerOrderDetailView: View {
             }
         }
         .navigationTitle("Pedido \(String(order.id.prefix(6)))")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
                 HStack {
@@ -83,7 +93,6 @@ struct ServerOrderDetailView: View {
                     } label: {
                         Label("Eliminar", systemImage: "trash")
                     }
-
                     Spacer()
                 }
             }
@@ -95,12 +104,13 @@ struct ServerOrderDetailView: View {
         }
     }
 
-    /// Cuando el servidor confirma el pedido con la barra de arrastre
+    // MARK: - Lógica
+
     private func confirmOrderAndSaveSale() {
-        // 1. Marcar el pedido como atendido en memoria / sockets
+        // 1. Marcar como pagado en memoria
         orders.markPaid(order: order)
 
-        // 2. Guardar la venta en SQLite
+        // 2. Guardar venta en SQLite
         do {
             try OrderDatabase.shared.saveSale(for: order)
         } catch {
@@ -108,12 +118,13 @@ struct ServerOrderDetailView: View {
             showSaleError = true
         }
 
-        // 3. (Opcional) cerrar la pantalla del detalle
+        // 3. Cerrar detalle
         dismiss()
     }
 }
 
-/// Barra de arrastre tipo "slide to confirm"
+// MARK: - SlideToConfirm (igual que tenías)
+
 struct SlideToConfirm: View {
     let text: String
     let onCompleted: () -> Void
@@ -128,21 +139,18 @@ struct SlideToConfirm: View {
             let maxDrag = width - knobSize - 4
 
             ZStack(alignment: .leading) {
-                // Fondo
                 RoundedRectangle(cornerRadius: 26)
                     .fill(Color(.systemGray6))
 
                 RoundedRectangle(cornerRadius: 26)
                     .stroke(Color.matcha, lineWidth: 2)
 
-                // Texto centrado
                 Text(didComplete ? "Pedido listo" : text)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(didComplete ? Color.matcha : .secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                // "Botón" que se arrastra
                 Circle()
                     .fill(Color.matcha)
                     .frame(width: knobSize, height: knobSize)
@@ -158,7 +166,6 @@ struct SlideToConfirm: View {
                             .onEnded { _ in
                                 guard !didComplete else { return }
                                 if dragOffset > maxDrag * 0.7 {
-                                    // Se considera completado
                                     dragOffset = maxDrag
                                     didComplete = true
                                     onCompleted()
@@ -174,6 +181,7 @@ struct SlideToConfirm: View {
     }
 }
 
+/*
 #Preview {
     NavigationStack {
         ServerOrderDetailView(order: .previewSample)
@@ -201,7 +209,7 @@ extension ServerOrder {
             status: .pending
         )
     }
-}
+}*/
 
 
 
