@@ -42,7 +42,9 @@ final class SocketService: ObservableObject {
     private var retry = 0
     private var pingTimer: Timer?
 
-    static let WS_URL = URL(string: "ws://localhost:5050/ws")!
+    // OJO: usar la IP local de tu Mac cuando pruebes en dispositivos físicos
+    // Ejemplo: ws://192.168.1.195:5050/ws
+    static let WS_URL = URL(string: "ws://192.168.1.195:5050/ws")!
 
     init(url: URL = WS_URL) { self.url = url }
 
