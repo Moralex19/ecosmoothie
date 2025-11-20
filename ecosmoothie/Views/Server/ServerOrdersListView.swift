@@ -33,6 +33,36 @@ struct ServerOrdersListView: View {
                             } label: {
                                 OrderRow(order: order)
                             }
+                            // 👇 Swipe para PAGAR / CANCELAR
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+
+                                // CANCELAR (full swipe hacia la izquierda)
+                                Button(role: .destructive) {
+                                    let id = order.id
+                                    DispatchQueue.main.async {
+                                        withAnimation {
+                                            orders.remove(id)
+                                        }
+                                    }
+                                } label: {
+                                    Label("Cancelar", systemImage: "xmark")
+                                }
+
+                                // PAGADO (solo si está pendiente)
+                                if order.status == .pending {
+                                    Button {
+                                        let id = order.id
+                                        DispatchQueue.main.async {
+                                            withAnimation {
+                                                orders.markPaid(id)
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Pagado", systemImage: "checkmark")
+                                    }
+                                    .tint(.green)
+                                }
+                            }
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -69,6 +99,13 @@ private struct OrderRow: View {
                 Text("Pedido \(order.id.prefix(6))")
                     .font(.headline)
 
+                // Nombre del cliente
+                if let name = order.customerName,
+                   !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(name)
+                        .font(.subheadline)
+                }
+
                 Text(order.createdAt, style: .date)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -98,32 +135,54 @@ private struct OrderRow: View {
     }
 }
 
+// MARK: - Preview
+
 struct ServerOrdersListView_Previews: PreviewProvider {
     static var previews: some View {
-        let cartItem = CartItem(
-            product: Product(
-                id: "p-fresa",
-                name: "Fresa",
-                imageName: "fresa2",
-                price: 15,
-                kind: .smoothie
-            ),
-            basePrice: 10,
+        // Ingrediente de ejemplo
+        let cherry = ServerOrderIngredient(
+            productId: "i-cereza",
+            name: "Cereza",
+            unitPrice: 1,
+            count: 1
+        )
+
+        // Items de ejemplo
+        let item1 = ServerOrderItem(
+            productId: "p-fresa",
+            name: "Fresa",
+            basePrice: 15,
+            total: 16,
+            ingredients: [cherry]
+        )
+
+        let item2 = ServerOrderItem(
+            productId: "p-durazno",
+            name: "Durazno",
+            basePrice: 15,
+            total: 15,
             ingredients: []
         )
 
+        // Pedidos de ejemplo
         let order1 = ServerOrder(
             id: "ORDER123456",
-            items: [cartItem],
+            shopId: "tienda-1",
+            items: [item1],
+            total: 16,
+            status: .pending,
             createdAt: Date().addingTimeInterval(-600),
-            status: .pending
+            customerName: "Carlos"
         )
 
         let order2 = ServerOrder(
             id: "ORDER654321",
-            items: [cartItem, cartItem],
+            shopId: "tienda-1",
+            items: [item1, item2],
+            total: 31,
+            status: .paid,
             createdAt: Date().addingTimeInterval(-3600),
-            status: .paid
+            customerName: "Ana"
         )
 
         let store = OrdersStore()

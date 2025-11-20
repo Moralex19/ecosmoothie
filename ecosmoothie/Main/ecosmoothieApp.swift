@@ -13,6 +13,7 @@ struct EcosmoothieApp: App {
     @StateObject private var socket   = SocketService()
     @StateObject private var orders   = OrdersStore()
     @StateObject private var sales    = SalesStore()
+    //@StateObject private var ordersStore = OrdersStore()
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,7 @@ struct EcosmoothieApp: App {
                 .environmentObject(socket)
                 .environmentObject(orders)
                 .environmentObject(sales)
+                //.environmentObject(ordersStore)
         }
     }
 }

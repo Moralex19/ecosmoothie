@@ -9,26 +9,14 @@ import Foundation
 import Combine
 import SwiftUI
 
-// MARK: - Model
-struct ServerOrder: Identifiable, Hashable, Codable {
-    enum Status: String, Codable { case pending, paid }
-
-    let id: String
-    let items: [CartItem]
-    let createdAt: Date
-    var status: Status
-
-    var total: Double {
-        items.reduce(0) { $0 + $1.total }
-    }
-}
-
 // MARK: - Store
 @MainActor
 final class OrdersStore: ObservableObject {
     @Published private(set) var orders: [ServerOrder] = []
 
-    var pendingCount: Int { orders.filter { $0.status == .pending }.count }
+    var pendingCount: Int {
+        orders.filter { $0.status == .pending }.count
+    }
 
     private var bag = Set<AnyCancellable>()
 
@@ -60,6 +48,8 @@ final class OrdersStore: ObservableObject {
                     let self,
                     let idx = self.orders.firstIndex(where: { $0.id == update.orderId })
                 else { return }
+
+                // El backend manda status como String, nosotros lo mapeamos al enum
                 self.orders[idx].status = ServerOrder.Status(rawValue: update.status) ?? .pending
             }
             .store(in: &bag)

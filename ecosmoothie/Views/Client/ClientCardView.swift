@@ -1,5 +1,5 @@
 //
-//  ClientCardView.swift
+//  ClientCartView.swift
 //  ecosmoothie
 //
 //  Created by Freddy Morales on 21/10/25.
@@ -12,6 +12,7 @@ import SQLite3
 struct ClientCartView: View {
     @EnvironmentObject var cart: CartStore
     @EnvironmentObject var socket: SocketService   // para enviar el pedido por sockets
+    @StateObject private var checkoutBridge: ClientCartCheckoutBridge
 
     @StateObject private var holder = Holder()
     @State private var showEmptyAlert = false
@@ -29,6 +30,14 @@ struct ClientCartView: View {
 
     @State private var selectedPaymentMethod: PaymentMethod?
 
+    init() {
+        // el socket real te lo inyecta el EnvironmentObject en runtime,
+        // para el init del StateObject usamos un placeholder y luego lo actualizamos en .onAppear
+        _checkoutBridge = StateObject(
+            wrappedValue: ClientCartCheckoutBridge(socket: SocketService())
+        )
+    }
+
     var body: some View {
         Group {
             if cart.items.isEmpty {
@@ -42,35 +51,50 @@ struct ClientCartView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.almond.opacity(0.15))
             } else {
-                List {
-                    ForEach(cart.items) { item in
-                        CartRow(item: item)
-                            .listRowBackground(Color.almond.opacity(0.35))
+                VStack(spacing: 8) {
+                    // 👇 Nombre del cliente
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre del cliente")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        TextField("Ej. Carlos", text: $cart.customerName)
+                            .textFieldStyle(.roundedBorder)
                     }
-                    .onDelete(perform: cart.remove)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
 
-                    Section {
-                        HStack {
-                            Text("Total del carrito").fontWeight(.semibold)
-                            Spacer()
-                            Text(String(format: "$ %.2f", cart.total))
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.matcha)
+                    List {
+                        ForEach(cart.items) { item in
+                            CartRow(item: item)
+                                .listRowBackground(Color.almond.opacity(0.35))
                         }
+                        .onDelete(perform: cart.remove)
 
-                        if let status = orderStatus {
+                        Section {
                             HStack {
-                                Text("Estado del pedido")
+                                Text("Total del carrito").fontWeight(.semibold)
                                 Spacer()
-                                Text(status.uppercased())
-                                    .font(.caption).fontWeight(.semibold)
-                                    .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(Capsule().fill(Color.pistache))
+                                Text(String(format: "$ %.2f", cart.total))
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.matcha)
+                            }
+
+                            if let status = orderStatus {
+                                HStack {
+                                    Text("Estado del pedido")
+                                    Spacer()
+                                    Text(status.uppercased())
+                                        .font(.caption).fontWeight(.semibold)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Capsule().fill(Color.pistache))
+                                }
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
                 }
-                .scrollContentBackground(.hidden)
                 .background(Color.almond.opacity(0.15))
             }
         }
@@ -209,37 +233,48 @@ struct ClientCartView: View {
         switch selectedPaymentMethod {
         case .transfer:
             return """
-Pagarás por transferencia bancaria.
+            Pagarás por transferencia bancaria.
 
-Usa como ejemplo esta tarjeta:
-1234 1234 1234 1234
+            Usa como ejemplo esta tarjeta:
+            1234 1234 1234 1234
 
-Total a pagar: \(totalString)
-"""
+            Total a pagar: \(totalString)
+            """
         case .cash:
             return """
-Pagarás en efectivo.
+            Pagarás en efectivo.
 
-Total a pagar: \(totalString)
-"""
+            Total a pagar: \(totalString)
+            """
         case .none:
             return ""
         }
     }
 
     private func processPayment() {
-        // 1. Enviar pedido por sockets
-        holder.bridge?.checkout(cartItems: cart.items)
+        // Normalizar nombre
+        let rawName = cart.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nameOrNil = rawName.isEmpty ? nil : rawName
 
-        // 2. Guardar detalle del pedido en SQLite
+        // 1. Enviar pedido por sockets (con nombre)
+        holder.bridge?.checkout(
+            cartItems: cart.items,
+            customerName: nameOrNil
+        )
+
+        // 2. Guardar detalle del pedido en SQLite (con nombre)
         do {
-            try OrderDatabase.shared.saveOrder(items: cart.items, total: cart.total)
+            try OrderDatabase.shared.saveOrder(
+                items: cart.items,
+                total: cart.total,
+                customerName: nameOrNil
+            )
             print("✅ Pedido guardado en SQLite")
         } catch {
             print("❌ Error al guardar pedido en SQLite: \(error)")
         }
 
-        // 3. Limpiar carrito una vez pagado
+        // 3. Limpiar carrito una vez pagado (incluye nombre)
         cart.clear()
 
         // 4. Resetear selección de método de pago por si acaso
@@ -286,11 +321,11 @@ private struct CartRow: View {
         .padding(.vertical, 6)
     }
 }
+
 /*
 #Preview {
     let cart = CartStore()
 
-    // Item de carrito de prueba SIN ingredientes
     let item = CartItem(
         product: Product(
             id: "p-fresa",
@@ -300,13 +335,14 @@ private struct CartRow: View {
             kind: .smoothie
         ),
         basePrice: 10,
-        ingredients: []        
+        ingredients: []
     )
     cart._setPreviewItems([item])
+    cart.customerName = "Carlos"
 
     let socket = SocketService()
 
-    NavigationStack {          // 👈 OJO: SIN `return`
+    NavigationStack {
         ClientCartView()
             .environmentObject(cart)
             .environmentObject(socket)

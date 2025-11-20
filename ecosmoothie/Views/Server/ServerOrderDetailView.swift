@@ -2,214 +2,137 @@
 //  ServerOrderDetailView.swift
 //  ecosmoothie
 //
-//  Created by Freddy Morales on 23/10/25.
-//
 
 import SwiftUI
 
 struct ServerOrderDetailView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var orders: OrdersStore
-
     let order: ServerOrder
 
-    @State private var showSaleError = false
-    @State private var saleErrorMessage = ""
+    @EnvironmentObject var ordersStore: OrdersStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var statusText: String {
+        switch order.status {
+        case .pending: return "PENDIENTE"
+        case .paid:    return "PAGADO"
+        }
+    }
 
     var body: some View {
         List {
-            // MARK: - Productos
-            Section("Productos") {
-                ForEach(order.items) { item in   // CartItem es Identifiable
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Nombre del batido
-                        Text(item.product.name)
-                            .font(.headline)
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Pedido \(order.id)")
+                        .font(.headline)
 
-                        // Ingredientes (si hay)
-                        if !item.ingredients.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(item.ingredients) { ing in
-                                    HStack {
-                                        Text("\(ing.name) x\( ing.count )")
-                                        Spacer()
-                                        Text(String(format: "+$%.0f", ing.subtotal))
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
+                    if let name = order.customerName,
+                       !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Cliente: \(name)")
+                            .font(.subheadline)
+                    }
+
+                    Text(order.createdAt, style: .date)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(order.createdAt, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    Text("Estado: \(statusText)")
+                        .font(.subheadline)
+                        .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Section("Productos") {
+                ForEach(order.items) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(item.name)
+                                .font(.headline)
+                            Spacer()
+                            Text(item.total, format: .currency(code: "USD"))
+                                .fontWeight(.semibold)
                         }
 
-                        // Total de la línea
-                        HStack {
-                            Spacer()
-                            Text(String(format: "$%.0f", item.total))
-                                .foregroundStyle(Color.matcha)
-                                .fontWeight(.semibold)
+                        if !item.ingredients.isEmpty {
+                            Text("Extras:")
+                                .font(.subheadline)
+                            ForEach(item.ingredients) { ing in
+                                HStack {
+                                    Text("• \(ing.name) x\(ing.count)")
+                                    Spacer()
+                                    Text(ing.unitPrice, format: .currency(code: "USD"))
+                                }
+                                .font(.caption)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
                 }
             }
 
-            // MARK: - Resumen
             Section {
                 HStack {
-                    Text("Total").fontWeight(.semibold)
+                    Text("Total")
                     Spacer()
                     Text(order.total, format: .currency(code: "USD"))
-                        .fontWeight(.semibold)
+                        .font(.title3)
+                        .fontWeight(.bold)
                         .foregroundStyle(Color.matcha)
                 }
             }
-
-            // MARK: - Slide to confirm
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Confirmar pedido")
-                        .font(.headline)
-
-                    Text("Desliza para marcar el pedido como listo y registrar la venta.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    SlideToConfirm(text: "Desliza para confirmar") {
-                        confirmOrderAndSaveSale()
-                    }
-                    .frame(height: 52)
-                }
-                .padding(.vertical, 4)
-            }
         }
-        .navigationTitle("Pedido \(String(order.id.prefix(6)))")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Detalle pedido")
         .toolbar {
-            ToolbarItem(placement: .bottomBar) {
-                HStack {
-                    Button(role: .destructive) {
-                        orders.remove(order: order)
+            ToolbarItem(placement: .primaryAction) {
+                if order.status == .pending {
+                    Button("Marcar pagado") {
+                        ordersStore.markPaid(order: order)
                         dismiss()
-                    } label: {
-                        Label("Eliminar", systemImage: "trash")
                     }
-                    Spacer()
                 }
             }
         }
-        .alert("Error al guardar venta", isPresented: $showSaleError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(saleErrorMessage)
-        }
-    }
-
-    // MARK: - Lógica
-
-    private func confirmOrderAndSaveSale() {
-        // 1. Marcar como pagado en memoria
-        orders.markPaid(order: order)
-
-        // 2. Guardar venta en SQLite
-        do {
-            try OrderDatabase.shared.saveSale(for: order)
-        } catch {
-            saleErrorMessage = "No se pudo guardar la venta: \(error)"
-            showSaleError = true
-        }
-
-        // 3. Cerrar detalle
-        dismiss()
     }
 }
 
-// MARK: - SlideToConfirm (igual que tenías)
+// MARK: - Preview
 
-struct SlideToConfirm: View {
-    let text: String
-    let onCompleted: () -> Void
-
-    @State private var dragOffset: CGFloat = 0
-    @State private var didComplete = false
-
-    var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            let knobSize: CGFloat = 44
-            let maxDrag = width - knobSize - 4
-
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 26)
-                    .fill(Color(.systemGray6))
-
-                RoundedRectangle(cornerRadius: 26)
-                    .stroke(Color.matcha, lineWidth: 2)
-
-                Text(didComplete ? "Pedido listo" : text)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(didComplete ? Color.matcha : .secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                Circle()
-                    .fill(Color.matcha)
-                    .frame(width: knobSize, height: knobSize)
-                    .shadow(radius: 2)
-                    .offset(x: dragOffset + 2)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                guard !didComplete else { return }
-                                let translation = value.translation.width
-                                dragOffset = min(max(0, translation), maxDrag)
-                            }
-                            .onEnded { _ in
-                                guard !didComplete else { return }
-                                if dragOffset > maxDrag * 0.7 {
-                                    dragOffset = maxDrag
-                                    didComplete = true
-                                    onCompleted()
-                                } else {
-                                    withAnimation(.spring()) {
-                                        dragOffset = 0
-                                    }
-                                }
-                            }
-                    )
-            }
-        }
-    }
-}
-
-/*
-#Preview {
-    NavigationStack {
-        ServerOrderDetailView(order: .previewSample)
-            .environmentObject(OrdersStore())
-    }
-}
-
-extension ServerOrder {
-    static var previewSample: ServerOrder {
-        let ingredients: [IngredientCount] = [
-            IngredientCount(kind: .cereza, count: 2),
-            IngredientCount(kind: .gomita, count: 1)
-        ]
-
-        let item = CartItem(
-            product: Product(id: "p-fresa", name: "Fresa", imageName: "fresa2"),
-            basePrice: 10,
-            ingredients: ingredients
+struct ServerOrderDetailView_Previews: PreviewProvider {
+    static var previews: some View {
+        let ing = ServerOrderIngredient(
+            productId: "i-cereza",
+            name: "Cereza",
+            unitPrice: 1,
+            count: 1
         )
 
-        return ServerOrder(
-            id: "ORDER123456",
+        let item = ServerOrderItem(
+            productId: "p-durazno",
+            name: "Durazno",
+            basePrice: 15,
+            total: 16,
+            ingredients: [ing]
+        )
+
+        let order = ServerOrder(
+            id: "srv-zkpwxi",
+            shopId: "tienda-1",
             items: [item],
-            createdAt: Date(),  
-            status: .pending
+            total: 16,
+            status: .pending,
+            createdAt: Date(),
+            customerName: "Carlos"
         )
+
+        let store = OrdersStore()
+        store._setPreviewOrders([order])
+
+        return NavigationStack {
+            ServerOrderDetailView(order: order)
+                .environmentObject(store)
+        }
     }
-}*/
-
-
-
+}

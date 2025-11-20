@@ -11,6 +11,7 @@ import Combine
 @MainActor
 final class CartStore: ObservableObject {
     @Published private(set) var items: [CartItem] = []
+    @Published var customerName: String = ""
     
     struct Purchase: Identifiable, Hashable, Codable {
         let id: UUID = UUID()
